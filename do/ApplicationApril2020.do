@@ -6,32 +6,32 @@ set more off
 clear all
 capture log close
 
-/* STEPHANIE: I tried to use a differen color scheme coz I couldn't understand which line was which age
+/*
 ssc install blindschemes, replace all
 ssc install rdrobust, replace all
 */
 
 if "`c(username)'" == "pbirol" {
-	global dir  "C:/Users/pbirol/Documents/work/ALSPAC_GxE/Alspac"
-	global dirx "C:/Users/pbirol/Documents/work/ALSPAC_GxE/Alspac"
+	global dirdata  "C:/Users/pbirol/Documents/work/ALSPAC_GxE/Alspac"
 }
 
 else if "`c(username)'" == "ecsmvhkv" {
-	global dir  "\\rdsfcifs.acrc.bris.ac.uk/ALSPAC_GxE/Alspac"
-	global dirx "\\\\\\rdsfcifs.acrc.bris.ac.uk/ALSPAC_GxE/Alspac"
+	global dirdata  "\\rdsfcifs.acrc.bris.ac.uk/ALSPAC_GxE/Alspac"
 }
 
-global dirtables  "${dirx}/GxE_4practitioners/tables"
-global dirfigures "${dir}/GxE_4practitioners/figures"
+global dirdropbox  "/Users/`c(username)'/Dropbox/GEIGHEI/projects/GxE_4practitioners"
+
+global dirtables  "${dirdropbox}/tables"
+global dirfigures "${dirdropbox}/figures"
 
 
-cd "${dir}/GxE_4practitioners/"
+cd "${dirdropbox}/"
 
 	* SET UP LOG FILE
 local date: display %td_CCYY-NN-DD date(c(current_date), "DMY")
 local datetime = subinstr("`date'"," ","",.)+"_" +subinstr(c(current_time), ":", "-", .)
 di "`datetime'"
-log using "${dir}/GxE_4practitioners/logfiles/PractictionersPaper_`datetime'", text replace
+log using "${dirdropbox}/logfiles/PractictionersPaper_`datetime'", text replace
 
 
 
@@ -48,7 +48,7 @@ global regs      = 1
 
 if ${dataclean}==1{ // cleans the data and creates the variables for the regression
 *** Saving PCs into Stata format
-insheet using "${dir}/Child/ALSPAC_pc_10_CHILDREN.csv", clear
+insheet using "${dirdata}/Child/ALSPAC_pc_10_CHILDREN.csv", clear
 rename 	v1 id_child 
 drop 	v2
 foreach i in 3 4 5 6 7 8 9 10 11 12 {
@@ -56,17 +56,17 @@ foreach i in 3 4 5 6 7 8 9 10 11 12 {
 	rename v`i' PC`p'
 }
 compress
-save 	"${dir}/Child/ALSPAC_pc_10_CHILDREN.dta", replace
+save 	"${dirdata}/Child/ALSPAC_pc_10_CHILDREN.dta", replace
 
 
 
 *** On ALSPAC data held at Erasmus
-use 	"${dir}/Data_Set/Rietveld_12Sep18.dta", clear
+use 	"${dirdata}/Data_Set/Rietveld_12Sep18.dta", clear
 rename 	qlet birth_order
-merge 	1:1 cidB2492 birth_order using "${dir}/Child/PGS_children_alspac_plink_EA.dta"
+merge 	1:1 cidB2492 birth_order using "${dirdata}/Child/PGS_children_alspac_plink_EA.dta"
 drop 	if _m<3
 drop 	_merge
-merge 	1:1 id_child using "${dir}/Child/ALSPAC_pc_10_CHILDREN.dta"
+merge 	1:1 id_child using "${dirdata}/Child/ALSPAC_pc_10_CHILDREN.dta"
 drop 	if _m<3
 drop 	_merge
 
@@ -179,14 +179,14 @@ gen MoBnew_PGS = MoBnew0*PGS
 gen MoB_PGS_treat = MoB0*PGS*treat
 gen MoBnew_PGS_treat = MoBnew0*PGS*treat
 
-save "${dir}/Data_Set/cleanALSPAC4application.dta", replace
+save "${dirdata}/Data_Set/cleanALSPAC4application.dta", replace
 } // end if dataclean
 
 *---------------------------------------------------------------------------------*
 * FIGURES
 *---------------------------------------------------------------------------------*
 if ${figures}==1{ // creates some cool figures
-use "${dir}/Data_Set/cleanALSPAC4application.dta", clear
+use "${dirdata}/Data_Set/cleanALSPAC4application.dta", clear
 
 foreach var of varlist ea ks1 ks2 ks3 ks4 IQ {
 	gen `var'hiPGS = `var'* highPGS
@@ -309,7 +309,7 @@ foreach test in ea ks1 ks2 ks3 ks4{
 * REGRESSIONS
 *---------------------------------------------------------------------------------*
 if ${regs}==1{ // runs the regressions
-use "${dir}/Data_Set/cleanALSPAC4application.dta", clear
+use "${dirdata}/Data_Set/cleanALSPAC4application.dta", clear
 
 * Some simple regressions
 * create the interaction terms between PGS and the controls
@@ -412,22 +412,25 @@ esttab 	m1 m2 m3 m4 m5 using "${dirtables}/MoB_GxE2.tex", replace ///
 	mtitles("Age 4" "Age 7" "Age 11" "Age 14" "Age 16") ///
 	stats(r2 N, label("R2" "Observations") fmt(3 0)) nonotes coeflabel(MoB "MoB" MoB_PGS "MoB*PGS" MoB_PGS_treat "MoB*PGS*Treated" PGS "PGS" treat "Treated" treat_MoB "Treated*MoB" treat_PGS "Treated*PGS") 
 
-* Excluding the observations "far" from the cutoff
-gen window = (MoB >=5 & MoB<=12) if MoB<.
+*------ Excluding the observations "far" from the cutoff
+forvalues width=2/5{
+capture drop window*
+gen window`width' = (MoBnew <=`width' | MoBnew>(12-`width')) if MoBnew<.
 
 * Continuous MoB
-eststo 	m1: reg ea  treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male PC* PGSxmale PGSxPC*, robust cluster(MoB), if window == 1
-eststo 	m2: reg ks1 treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male PC* PGSxmale PGSxPC*, robust cluster(MoB), if window == 1
-eststo 	m3: reg ks2 treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male PC* PGSxmale PGSxPC*, robust cluster(MoB), if window == 1
-eststo 	m4: reg ks3 treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male PC* PGSxmale PGSxPC*, robust cluster(MoB), if window == 1
-eststo 	m5: reg ks4 treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male PC* PGSxmale PGSxPC*, robust cluster(MoB), if window == 1
+eststo 	m1: reg ea  treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male PC* PGSxmale PGSxPC*, robust cluster(MoB), if window`width' == 1
+eststo 	m2: reg ks1 treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male PC* PGSxmale PGSxPC*, robust cluster(MoB), if window`width' == 1
+eststo 	m3: reg ks2 treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male PC* PGSxmale PGSxPC*, robust cluster(MoB), if window`width' == 1
+eststo 	m4: reg ks3 treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male PC* PGSxmale PGSxPC*, robust cluster(MoB), if window`width' == 1
+eststo 	m5: reg ks4 treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male PC* PGSxmale PGSxPC*, robust cluster(MoB), if window`width' == 1
 
 esttab 	m1 m2 m3 m4 m5, b se keep(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) star(* 0.10 ** 0.05 *** 0.01) stats(N, fmt(0))
 
-esttab 	m1 m2 m3 m4 m5 using "${dirtables}/MoB_GxE2_window.tex", replace ///
+esttab 	m1 m2 m3 m4 m5 using "${dirtables}/MoB_GxE2_window`width'.tex", replace ///
 	frag bookt b(3) se(3) keep(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) star(* 0.10 ** 0.05 *** 0.01) ///
 	mtitles("Age 4" "Age 7" "Age 11" "Age 14" "Age 16") ///
 	stats(r2 N, label("R2" "Observations") fmt(3 0)) nonotes coeflabel(MoB "MoB" MoB_PGS "MoB*PGS" MoB_PGS_treat "MoB*PGS*Treated" PGS "PGS" treat "Treated" treat_MoB "Treated*MoB" treat_PGS "Treated*PGS") 
+} // end forvalues width
 
 * RDrobust
 foreach test in ea ks1 ks2 ks3 ks4{
@@ -438,7 +441,7 @@ foreach test in ea ks1 ks2 ks3 ks4{
 } // end if regs
 
 /* remove temporary dataset
-rm "${dir}/Data_Set/cleanALSPAC4application.dta"
+rm "${dirdata}/Data_Set/cleanALSPAC4application.dta"
 */
 
 log close
