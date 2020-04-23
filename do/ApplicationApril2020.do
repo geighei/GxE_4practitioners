@@ -38,7 +38,7 @@ log using "${dir}/GxE_4practitioners/logfiles/PractictionersPaper_`datetime'", t
 
 ** SKIP Patterns (set to zero if you want to skip that section)
 global dataclean = 1
-global figures   = 1
+global figures   = 0
 global regs      = 1 
 
 
@@ -412,6 +412,24 @@ esttab 	m1 m2 m3 m4 m5 using "${dirtables}/MoB_GxE2.tex", replace ///
 	mtitles("Age 4" "Age 7" "Age 11" "Age 14" "Age 16") ///
 	stats(r2 N, label("R2" "Observations") fmt(3 0)) nonotes coeflabel(MoB "MoB" MoB_PGS "MoB*PGS" MoB_PGS_treat "MoB*PGS*Treated" PGS "PGS" treat "Treated" treat_MoB "Treated*MoB" treat_PGS "Treated*PGS") 
 
+* Excluding the observations "far" from the cutoff
+gen window = (MoB >=5 & MoB<=12) if MoB<.
+
+* Continuous MoB
+eststo 	m1: reg ea  treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male PC* PGSxmale PGSxPC*, robust cluster(MoB), if window == 1
+eststo 	m2: reg ks1 treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male PC* PGSxmale PGSxPC*, robust cluster(MoB), if window == 1
+eststo 	m3: reg ks2 treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male PC* PGSxmale PGSxPC*, robust cluster(MoB), if window == 1
+eststo 	m4: reg ks3 treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male PC* PGSxmale PGSxPC*, robust cluster(MoB), if window == 1
+eststo 	m5: reg ks4 treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male PC* PGSxmale PGSxPC*, robust cluster(MoB), if window == 1
+
+esttab 	m1 m2 m3 m4 m5, b se keep(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) star(* 0.10 ** 0.05 *** 0.01) stats(N, fmt(0))
+
+esttab 	m1 m2 m3 m4 m5 using "${dirtables}/MoB_GxE2_window.tex", replace ///
+	frag bookt b(3) se(3) keep(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) star(* 0.10 ** 0.05 *** 0.01) ///
+	mtitles("Age 4" "Age 7" "Age 11" "Age 14" "Age 16") ///
+	stats(r2 N, label("R2" "Observations") fmt(3 0)) nonotes coeflabel(MoB "MoB" MoB_PGS "MoB*PGS" MoB_PGS_treat "MoB*PGS*Treated" PGS "PGS" treat "Treated" treat_MoB "Treated*MoB" treat_PGS "Treated*PGS") 
+
+* RDrobust
 foreach test in ea ks1 ks2 ks3 ks4{
 	rdrobust `test' MoB if highPGS==1, c(9) covs(PGS male PC*)
 	rdrobust `test' MoB if highPGS==0, c(9) covs(PGS male PC*)
