@@ -457,3 +457,120 @@ log close
 
 
 exit
+
+
+/***************************************************************************
+***** Identifying week of birth from data on 
+* Date questionnaire completed
+* Age in weeks when questionnaire completed
+* Month of birth
+***************************************************************************
+use "\\rdsfcifs.acrc.bris.ac.uk\RDSF_EFIM\shared\cohgroup\alspacrawdata\alspacchild_1.dta", clear
+keep 	cid084a qlet ka320 ka321 ka322 ka325 ka326 
+rename 	ka320 Q_day
+rename 	ka321 Q_month
+rename 	ka322 Q_year
+rename 	ka325 Q_age
+rename 	ka326 MoB
+
+replace Q_year = Q_year + 1900
+gen 	date = mdy(Q_month,Q_day,Q_year)
+gen 	WoB = date - (Q_age*7)
+format 	date WoB %td
+
+* Check mismatches
+gen 	month = month(WoB)
+tab 	month MoB
+
+* Few mismatches - ensure WoB takes same value as MoB (former is derived by us from data available; latter is provided by ALSPAC)
+replace WoB = WoB-6 if month-MoB==1 | (month==1 & MoB==12)
+
+* Check mismatches again
+drop 	month
+gen 	month = month(WoB)
+assert 	month == MoB if month<. & MoB<.
+drop 	month
+
+* Create weeks with week 1 being the w/c 1 September 
+gen 	week = 0 if (WoB>=td("01sep1991") & WoB<=td("07sep1991")) | (WoB>=td("01sep1992") & WoB<=td("07sep1992"))
+
+* 1/9/1991 = 11566; 1/9/1992 = 11932
+local wkstart90 = 11208 	//  8-9-1990
+local wkend90   = 11214		// 14-9-1990
+local wkstart91 = 11573 	//  8-9-1991
+local wkend91   = 11579		// 14-9-1991
+local wkstart92 = 11939 	//  8-9-1992
+local wkend92   = 11945		// 14-9-1992
+local wk        = 1
+while `wk'<=51 {
+	replace week    = `wk' if (WoB>=`wkstart90' & WoB<=`wkend90') | (WoB>=`wkstart91' & WoB<=`wkend91') | (WoB>=`wkstart92' & WoB<=`wkend92')
+	local wkstart90 = `wkstart90'+7
+	local wkend90   = `wkend90'+7
+	local wkstart91 = `wkstart91'+7
+	local wkend91   = `wkend91'+7
+	local wkstart92 = `wkstart92'+7
+	local wkend92   = `wkend92'+7
+	local wk        = `wk'+1
+}
+
+* Add last 1-2 days of the 'year' (i.e. 30/31 Aug) to week 52 
+replace week = 51 if WoB==td(30aug1991) | WoB==td(31aug1991) | WoB==td(30aug1992) | WoB==td(31aug1992)
+
+
+* Check graphs of educational attainment by week
+merge 	1:1 cid084a qlet using "C:\Users\ecsmvhkv\OneDrive - University of Bristol\MyFiles-Migrated\Projects\PrenatalMentalHealth\Stata\data02.dta", keepusing(ea_avg k1avg_alt k2avg_alt k3avg_alt k4avg_alt)
+drop 	if _m<3
+drop 	_m
+
+
+preserve
+
+	* Collapse the data
+	collapse ea_avg k1avg_alt k2avg_alt k3avg_alt k4avg_alt, by(week)
+
+	twoway  (line ea_avg    week, sort) ///
+		(line k1avg_alt week, sort) ///
+		(line k2avg_alt week, sort) ///
+		(line k3avg_alt week, sort) ///
+		(line k4avg_alt week, sort) ///
+		if ea_avg>-0.5 & k1avg_alt>-0.5 & k2avg_alt>-0.5 & k3avg_alt>-0.5 & k4avg_alt>-0.5 ///
+		, xlabel(0(10)51, valuelabel) ///
+		ytitle("Standardised score") xtitle("Week of birth (relative to September)") ///
+		legend(on order(1 "Age 4" 2 "Age 7" 3 "Age 11" 4 "Age 14" 5 "Age 16") pos(6) row(1)) ///
+		ylabel(-.5(.25).5) yscale(range(-0.5 0.5)) yline(0) ///
+		title("Test scores by week of birth") scheme(s1mono)
+	graph export "${dirfigures}/WoB.png", replace
+
+	twoway (line ea_avg week, sort), xlabel(0(10)50, valuelabel) ///
+		ytitle("Entry assessment") xtitle("Week of birth") ///
+		ylabel(-.5(.25).5) yscale(range(-0.5 0.5)) yline(0) ///
+		title("Score on Entry Assessment test (age 4/5)") scheme(s1mono)
+	graph export "${dirfigures}/WoB_ea.png", replace
+	
+	twoway (line k1avg_alt week, sort) if k1avg_alt>-0.5, xlabel(0(10)50, valuelabel) ///
+		ytitle("Key Stage 1") xtitle("Week of birth") ///
+		ylabel(-.5(.25).5) yscale(range(-0.5 0.5)) yline(0) ///
+		title("Score on Key Stage 1 test (age 7)") scheme(s1mono)
+	graph export "${dirfigures}/WoB_ks1.png", replace
+
+	twoway (line k2avg_alt week, sort) if k2avg_alt>-0.5, xlabel(0(10)50, valuelabel) ///
+		ytitle("Key Stage 2") xtitle("Week of birth") ///
+		ylabel(-.5(.25).5) yscale(range(-0.5 0.5)) yline(0) ///
+		title("Score on Key Stage 2 test (age 11)") scheme(s1mono)
+	graph export "${dirfigures}/WoB_ks2.png", replace
+
+	twoway (line k3avg_alt week, sort) if k3avg_alt>-0.5, xlabel(0(10)50, valuelabel) ///
+		ytitle("Key Stage 3") xtitle("Week of birth") ///
+		ylabel(-.5(.25).5) yscale(range(-0.5 0.5)) yline(0) ///
+		title("Score on Key Stage 3 test (age 14)") scheme(s1mono)
+	graph export "${dirfigures}/WoB_ks3.png", replace
+
+	twoway (line k4avg_alt week, sort) if k4avg_alt>-0.5, xlabel(0(10)50, valuelabel) ///
+		ytitle("Key Stage 4") xtitle("Week of birth") ///
+		ylabel(-.5(.25).5) yscale(range(-0.5 0.5)) yline(0) ///
+		title("Score on Key Stage 4 test (age 16)") scheme(s1mono)
+	graph export "${dirfigures}/WoB_ks4.png", replace
+	
+
+restore
+
