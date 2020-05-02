@@ -1,6 +1,6 @@
 ***************************************************************************
-***** Check August vs. September births - ALSPAC. 
-***** Stephanie von Hinke, Apr 2020
+***** GxE of August vs. September births - ALSPAC. 
+***** Stephanie von Hinke and Pietro Biroli, Apr 2020
 ***************************************************************************
 set more off
 clear all
@@ -9,6 +9,8 @@ capture log close
 /*
 ssc install blindschemes, replace all
 ssc install rdrobust, replace all
+ssc install vioplot, replace all
+ssc install grqreg, replace all
 */
 
 if "`c(username)'" == "pbirol" {
@@ -38,7 +40,9 @@ log using "${dirdropbox}/logfiles/PractictionersPaper_`datetime'", text replace
 
 ** SKIP Patterns (set to zero if you want to skip that section)
 global dataclean = 1
-global figures   = 0
+global figures   = 1
+	global figuresGxE = 1
+	global figuresRDD = 1
 global regs      = 1 
 
 
@@ -89,14 +93,14 @@ label 	var male "Male"
 recode 	sat092b (-10 -6 -5 = .)
 sum 	sat092b 
 gen 	ea = (sat092b - r(mean)) / r(sd)
-label 	var ea "Entry Assessment score"
+label 	var ea "Entry Assessment score (age 4/5)"
 
 
 * Key stage 1 
 recode 	sat190a (-10 -6 -5 = .)
 sum 	sat190a
 gen 	ks1 = (sat190a - r(mean)) / r(sd)
-label 	var ks1 "Key stage 1 summary score"
+label 	var ks1 "Key stage 1 summary score (age 7)"
 
 
 * Key stage 2
@@ -109,9 +113,8 @@ destring k2_tots, gen(k2s)
 egen 	k2 = rsum(k2e k2m k2s)
 sum 	k2 if k2e<. & k2m<. & k2s<.
 gen 	ks2 = (k2 - r(mean)) / r(sd) if k2e<. & k2m<. & k2s<.
-label 	var ks2 "Key stage 2 summary score"
+label 	var ks2 "Key stage 2 summary score (age 11)"
 drop 	k2e k2m k2s k2
-
 
 * Key stage 3
 foreach i in k3_tote k3_totm {
@@ -122,22 +125,22 @@ destring k3_totm, gen(k3m)
 egen 	k3 = rsum(k3e k3m)
 sum 	k3 if k3e<. & k3m<. 
 gen 	ks3 = (k3 - r(mean)) / r(sd) if k3e<. & k3m<.
-label 	var ks3 "Key stage 3 summary score"
+label 	var ks3 "Key stage 3 summary score (age 14)"
 drop 	k3e k3m k3 
 
 
 * Key stage 4
-replace ks4_ptstnewe = . if inlist(`i',-10,-1,0)
+replace ks4_ptstnewe = . if inlist(ks4_ptstnewe,-10,-1,0)
 sum 	ks4_ptstnewe 
 gen 	ks4 = (ks4_ptstnewe - r(mean)) / r(sd)
-label 	var ks4 "Key stage 4 summary score"
+label 	var ks4 "Key stage 4 summary score (age 16)"
 
 
 * IQ (WISC)
 recode 	f8ws112 (-9999 -3 -2 = .)
 sum 	f8ws112 
 gen 	IQ = (f8ws112 - r(mean)) / r(sd)
-label 	var IQ "IQ (WISC) score, F8"
+label 	var IQ "Wechsler Intelligence Scale for Children (IQ, age 8)"
 
 
 *   August vs. September births
@@ -148,10 +151,13 @@ label 	val MoBnew MoBnew
 
 * "Treated": born in the 6 months after September
 gen treat = (MoBnew<=6) if MoBnew<.
+label define treat 0 "Born before Sept" 1 "Born after Sept"
+label values treat treat
 
 ***************************************************************************
 keep 	cidB2492 birth_order male ea ks1 ks2 ks3 ks4 IQ MoB MoBnew pgs_child_EA PC* treat*
 rename 	pgs_child_EA PGS
+label var PGS "Child PGS for Educational Attainment"
 
 * Standardize to have mean 0 and standard deviation 1
 sum 	PGS
@@ -179,6 +185,12 @@ gen MoBnew_PGS = MoBnew0*PGS
 gen MoB_PGS_treat = MoB0*PGS*treat
 gen MoBnew_PGS_treat = MoBnew0*PGS*treat
 
+* sample selection based on window of n-months from the cutoff
+forvalues width=2/5{
+	gen window`width'mth = (MoBnew <=`width' | MoBnew>(12-`width')) if MoBnew<.
+}
+
+
 save "${dirdata}/Data_Set/cleanALSPAC4application.dta", replace
 } // end if dataclean
 
@@ -186,7 +198,140 @@ save "${dirdata}/Data_Set/cleanALSPAC4application.dta", replace
 * FIGURES
 *---------------------------------------------------------------------------------*
 if ${figures}==1{ // creates some cool figures
+
+if ${figuresGxE}==1{ // GxE figures: list of figures that *any* GxE paper should have
+
 use "${dirdata}/Data_Set/cleanALSPAC4application.dta", clear
+keep if window4mth == 1 // keep only 4 months of each side of the cutoff
+set scheme plotplainblind // s1rcolor plottig plotplain uncluttered lean2 economist
+
+
+
+***********         (1)         ***********
+*------- Treatment and PGS: descriptives assuming dichotomous treatment ----------------------------------------------------*
+local PGSlabel: variable label PGS
+
+* Violin plot of outcome over the treatment
+vioplot PGS, over(treat) ///
+      ytitle("`PGSlabel'") xtitle("Treatment") bar(color(black)) line(color(gray)) median(color(red))
+graph export "${dirfigures}/violin_treat_PGS.png", replace
+
+* Kdensity plot of treatment over outcome
+local lab0 : label treat 0
+local lab1 : label treat 1
+
+twoway ///
+    (kdens PGS if treat ==0) ///, ci
+	(kdens PGS if treat ==1) ///, ci
+	, legend(label(1 "`lab0'") label(2 "`lab1'") position(6)) ///
+	  xtitle("`PGSlabel'") ytitle("Density")
+
+	graph export "${dirfigures}/kdens_treat_PGS.png", replace
+
+	**TO DO: twoway does not allow to draw the confindence intervals with "kdens PGS,ci" We could run it separately and then plot jointly
+
+* Quantile regression of difference outcome over treatment (DESCRIPTIVE!!)
+qreg PGS treat
+grqreg, ci ols title(PGS)
+graph export "${dirfigures}/qreg_treat_PGS.png", replace
+
+
+
+foreach outcome in ea ks1 ks2 ks3 ks4 IQ {
+	local outcomelabel: variable label `outcome'
+
+	***********         (2)         ***********
+	*------- Treatment and outcome: descriptives assuming dichotomous treatment ----------------------------------------------------*
+
+	* Violin plot of outcome over the treatment
+	vioplot `outcome', over(treat) ///
+		  ytitle("`outcomelabel'") xtitle("Treatment") bar(color(black)) line(color(gray)) median(color(red))
+	graph export "${dirfigures}/violin_treat_`outcome'.png", replace
+
+	* Kdensity plot of treatment over outcome
+	twoway ///
+		(kdens `outcome' if treat ==0) ///, ci
+		(kdens `outcome' if treat ==1) ///, ci
+		, legend(label(1 "`lab0'") label(2 "`lab1'") position(6)) ///
+		  xtitle("`outcomelabel'") ytitle("Density")
+
+		graph export "${dirfigures}/kdens_treat_`outcome'.png", replace
+
+		**TO DO: twoway does not allow to draw the confindence intervals. We could run it separately and then plot jointly
+
+	* Quantile regression of difference outcome over treatment (DESCRIPTIVE!!)
+	qreg `outcome' treat
+	grqreg, ci ols title(`outcome')
+	graph export "${dirfigures}/qreg_treat_`outcome'.png", replace
+
+
+
+
+
+	***********         (3)         ***********
+	*------- PGS and outcome: descriptives ----------------------------------------------------*
+	* Bin-scatter plot of PGS over outcome + density of PGS
+	capture drop 	PGS_bin meanP meanD tag
+	xtile 	PGS_bin = PGS, nquantiles(200)
+	bys 	PGS_bin: egen meanP = mean(PGS)
+	bys 	PGS_bin: egen meanD = mean(`outcome')
+	egen 	tag = tag(meanP meanD)
+
+	twoway  ///
+		(scatter meanD PGS if tag==1) ///
+		(kdensity PGS, yaxis(2)) ///
+		(lpolyci `outcome' PGS) ///
+		if PGS>-3 & PGS<3 , /// XXXX CUTTING OFF THE TAILS!
+		legend(off) ///
+		xtitle("PGS") ytitle("`outcomelabel'") ytitle("Density", axis(2)) scheme(plotplainblind)
+
+	graph export "${dirfigures}/density_PGS_`outcome'.png", replace
+	drop 	PGS_bin meanP meanD tag
+
+
+
+
+
+	***********         (4)         ***********
+	*------- PGSxTreat descriptives ----------------------------------------------------*
+	* Bin-scatter plot of PGS over outcome spearately by treatment ("raw" evidence of GxE)
+	capture drop PGS_bin* 
+	capture drop meanP* 
+	capture drop meanD* 
+	capture drop tag*
+	* control
+	xtile 	PGS_bin0 = PGS, nquantiles(200),        if treat == 0
+	bys 	PGS_bin0: egen meanP0 = mean(PGS)       if treat == 0
+	bys 	PGS_bin0: egen meanD0 = mean(`outcome') if treat == 0
+	egen 	tag0 = tag(meanP0 meanD0)               if treat == 0
+	* treatment
+	xtile 	PGS_bin1 = PGS, nquantiles(200),        if treat == 1
+	bys 	PGS_bin1: egen meanP1 = mean(PGS)       if treat == 1
+	bys 	PGS_bin1: egen meanD1 = mean(`outcome') if treat == 1
+	egen 	tag1 = tag(meanP1 meanD1)               if treat == 1
+	
+	* twoway graph
+	twoway  ///
+		(scatter meanD0 PGS if tag0==1) ///
+		(scatter meanD1 PGS if tag1==1) ///
+		(lpolyci `outcome' PGS if treat==0) ///
+		(lpolyci `outcome' PGS if treat==1) ///
+		if PGS>-3 & PGS<3 , /// XXXX CUTTING OFF THE TAILS!
+		legend(label(1 "`lab0', bin scatter")  label(2 "`lab1', bin scatter") ///
+			   label(4 "`lab0', local polynomial smooth") label(5 "`lab1', local polynomial smooth") /// 
+			   label(3 "95% CI") rows(2) position(6) size(vsmall)) ///
+		xtitle("PGS") ytitle("`outcomelabel'") scheme(plotplainblind)
+		
+	graph export "${dirfigures}/PGSxTreat_`outcome'.png", replace
+	drop 	PGS_bin* meanP* meanD* tag*
+} // end foreach outcome
+} // end if GxE figures
+
+if ${figuresRDD}==1{ // RDD-style figures
+
+use "${dirdata}/Data_Set/cleanALSPAC4application.dta", clear
+set scheme plotplainblind
+
 
 foreach var of varlist ea ks1 ks2 ks3 ks4 IQ {
 	gen `var'hiPGS = `var'* highPGS
@@ -209,6 +354,12 @@ foreach test in ea ks1 ks2 ks3 ks4{
 	graph export "${dirfigures}/rdplot_`test'_lowPGS.png", replace
 }
 
+* Violin plot of outcome over the months
+foreach outcome in ea ks1 ks2 ks3 ks4 IQ{
+local outcomelabel: variable label `outcome'
+vioplot ea, over(MoBnew) ytitle("`outcomelabel'") xtitle("Month of birth") bar(color(black)) line(color(gray)) median(color(red))
+graph export "${dirfigures}/violin_MoB_`outcome'.png", replace
+}
 
 //preserve
 	* Collapse the data
@@ -226,7 +377,6 @@ foreach test in ea ks1 ks2 ks3 ks4{
 		generate low`var' = `var' - invttail(n`var'-1,0.025)*(sd`var' / sqrt(n`var'))
 	}
 	
-	set scheme plotplainblind
 	
 	* Combined
 	twoway  (line ea  MoBnew, sort) ///
@@ -302,6 +452,8 @@ foreach test in ea ks1 ks2 ks3 ks4{
 	}
 	
 //restore
+} // end if RDD-style figures
+
 } // end if figures
 
 
@@ -368,6 +520,8 @@ foreach test in ea ks1 ks2 ks3 ks4{
 	rdrobust `test' MoB, c(9) covs(PGS male PC*)
 }
 
+set scheme plotplainblind
+
 ***************************************************************************
 **** With GxE interactions
 eststo 	m1: reg ea  ib9.MoB#c.PGS ib9.MoB PGS male PC* PGSxmale PGSxPC*, robust cluster(MoB)
@@ -414,19 +568,21 @@ esttab 	m1 m2 m3 m4 m5 using "${dirtables}/MoB_GxE2.tex", replace ///
 
 *------ Excluding the observations "far" from the cutoff
 forvalues width=2/5{
+/* DONE IN THE DATA CLEANING
 capture drop window*
-gen window`width' = (MoBnew <=`width' | MoBnew>(12-`width')) if MoBnew<.
+gen window`width'mth = (MoBnew <=`width' | MoBnew>(12-`width')) if MoBnew<.
+*/
 
 * Continuous MoB
-eststo 	m1: reg ea  treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male PC* PGSxmale PGSxPC*, robust cluster(MoB), if window`width' == 1
-eststo 	m2: reg ks1 treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male PC* PGSxmale PGSxPC*, robust cluster(MoB), if window`width' == 1
-eststo 	m3: reg ks2 treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male PC* PGSxmale PGSxPC*, robust cluster(MoB), if window`width' == 1
-eststo 	m4: reg ks3 treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male PC* PGSxmale PGSxPC*, robust cluster(MoB), if window`width' == 1
-eststo 	m5: reg ks4 treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male PC* PGSxmale PGSxPC*, robust cluster(MoB), if window`width' == 1
+eststo 	m1: reg ea  treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male PC* PGSxmale PGSxPC*, robust cluster(MoB), if window`width'mth == 1
+eststo 	m2: reg ks1 treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male PC* PGSxmale PGSxPC*, robust cluster(MoB), if window`width'mth == 1
+eststo 	m3: reg ks2 treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male PC* PGSxmale PGSxPC*, robust cluster(MoB), if window`width'mth == 1
+eststo 	m4: reg ks3 treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male PC* PGSxmale PGSxPC*, robust cluster(MoB), if window`width'mth == 1
+eststo 	m5: reg ks4 treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male PC* PGSxmale PGSxPC*, robust cluster(MoB), if window`width'mth == 1
 
 esttab 	m1 m2 m3 m4 m5, b se keep(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) star(* 0.10 ** 0.05 *** 0.01) stats(N, fmt(0))
 
-esttab 	m1 m2 m3 m4 m5 using "${dirtables}/MoB_GxE2_window`width'.tex", replace ///
+esttab 	m1 m2 m3 m4 m5 using "${dirtables}/MoB_GxE2_window`width'mth.tex", replace ///
 	frag bookt b(3) se(3) keep(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) star(* 0.10 ** 0.05 *** 0.01) ///
 	mtitles("Age 4" "Age 7" "Age 11" "Age 14" "Age 16") ///
 	stats(r2 N, label("R2" "Observations") fmt(3 0)) nonotes coeflabel(MoB "MoB" MoB_PGS "MoB*PGS" MoB_PGS_treat "MoB*PGS*Treated" PGS "PGS" treat "Treated" treat_MoB "Treated*MoB" treat_PGS "Treated*PGS") 
