@@ -39,11 +39,11 @@ log using "${dirdropbox}/logfiles/PractictionersPaper_`datetime'", text replace
 
 
 ** SKIP Patterns (set to zero if you want to skip that section)
-global dataclean = 1
+global dataclean = 0
 global figures   = 1
 	global figuresGxE = 1
 	global figuresRDD = 1
-global regs      = 1 
+global regs      = 1
 
 
 *---------------------------------------------------------------------------------*
@@ -202,7 +202,7 @@ if ${figures}==1{ // creates some cool figures
 if ${figuresGxE}==1{ // GxE figures: list of figures that *any* GxE paper should have
 
 use "${dirdata}/Data_Set/cleanALSPAC4application.dta", clear
-keep if window4mth == 1 // keep only 4 months of each side of the cutoff
+keep if window3mth == 1 // keep only 3 months of each side of the cutoff
 set scheme plotplainblind // s1rcolor plottig plotplain uncluttered lean2 economist
 
 
