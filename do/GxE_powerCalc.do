@@ -125,24 +125,24 @@ forvalues kSample = 1/`ss' {
 *I ONLY DO GRAPHS FOR THE T-TEST, NOT THE LR TEST
 if `ss'==1 {
 twoway (line overall_power1power1 overall_power1beta) ///
-       , ytitle("Power") xtitle("Coefficient interaction term") ///
+       , ytitle("Power") xtitle("Coefficient of the GxE  interaction term") ///
          note("Note: Number of replications `repl'") ///
-         legend(lab(1 "Sample size `ss1'"))
+         legend( pos(6) lab(1 "Sample size `ss1'"))
 }
 if `ss'==2 {
 twoway (line overall_power1power1 overall_power1beta) ///
        (line overall_power2power2 overall_power2beta) ///
-       , ytitle("Power") xtitle("Coefficient interaction term") ///
+       , ytitle("Power") xtitle("Coefficient of the GxE  interaction term") ///
          note("Note: Number of replications `repl'") ///
-         legend(lab(1 "Sample size `ss1'") lab(2 "Sample size `ss2'"))
+         legend( pos(6) lab(1 "Sample size `ss1'") lab(2 "Sample size `ss2'"))
 }
 if `ss'==3 {
 twoway (line overall_power1power1 overall_power1beta) ///
        (line overall_power2power2 overall_power2beta) ///
        (line overall_power3power3 overall_power3beta) ///
-       , ytitle("Power") xtitle("Coefficient interaction term") ///
+       , ytitle("Power") xtitle("Coefficient of the GxE  interaction term") ///
          note("Note: Number of replications `repl'") ///
-         legend(lab(1 "Sample size `ss1'") lab(2 "Sample size `ss2'") lab(3 "Sample size `ss3'"))
+         legend( pos(6) lab(1 "Sample size `ss1'") lab(2 "Sample size `ss2'") lab(3 "Sample size `ss3'"))
 
 graph export ${dirdropbox}/figures/power.pdf, replace
 
@@ -152,9 +152,9 @@ twoway (line overall_power1power1 overall_power1beta) ///
        (line overall_power2power2 overall_power2beta) ///
        (line overall_power3power3 overall_power3beta) ///
        (line overall_power4power4 overall_power4beta) ///
-       , ytitle("Power") xtitle("Coefficient interaction term") ///
+       , ytitle("Power") xtitle("Coefficient of the GxE  interaction term") ///
          note("Note: Number of replications `repl'") ///
-         legend(lab(1 "Sample size `ss1'") lab(2 "Sample size `ss2'") lab(3 "Sample size `ss3'") lab(4 "Sample size `ss4'"))
+         legend( pos(6) lab(1 "Sample size `ss1'") lab(2 "Sample size `ss2'") lab(3 "Sample size `ss3'") lab(4 "Sample size `ss4'"))
 }
 
 
@@ -165,9 +165,9 @@ twoway (line overall_power1power1 overall_power1beta) ///
        (line overall_power3power3 overall_power3beta) ///
        (line overall_power4power4 overall_power4beta) ///
        (line overall_power5power5 overall_power5beta) ///
-       , ytitle("Power") xtitle("Coefficient interaction term") ///
+       , ytitle("Power") xtitle("Coefficient of the GxE  interaction term") ///
          note("Note: Number of replications `repl'") ///
-         legend(lab(1 "Entry Assessment (Age 4)") lab(2 "Key Stage 1 (Age 7)") lab(3 "Key Stage 2 (Age 11)") lab(4 "Key Stage 3 (Age 14)") lab(5 "Key Stage 4 (Age 16)"))
+         legend( pos(6) lab(1 "Entry Assessment (Age 4)") lab(2 "Key Stage 1 (Age 7)") lab(3 "Key Stage 2 (Age 11)") lab(4 "Key Stage 3 (Age 14)") lab(5 "Key Stage 4 (Age 16)"))
 }
 
 
