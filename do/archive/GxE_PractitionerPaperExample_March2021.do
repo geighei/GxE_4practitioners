@@ -39,11 +39,12 @@ log using "${dirdropbox}/projects/GxE_4practitioners/logfiles/PractictionersPape
 
 
 ** SKIP Patterns (set to zero if you want to skip that section)
-global dataclean = 1
-global figures   = 1
-	global figuresGxE = 1
-	global figuresRDD = 1
-global regs      = 1
+global dataclean      = 1
+global figures        = 1
+	global figuresGxE = 0
+	global figuresRDD = 0
+global regs           = 1
+global permutation    = 1
 
 
 *---------------------------------------------------------------------------------*
@@ -62,16 +63,71 @@ if ${dataclean}==1{ // cleans the data and creates the variables for the regress
 	compress
 save 	"${dirdata}/Child/ALSPAC_pc_10_CHILDREN.dta", replace
 
+
+		* Checking scores - children
+		insheet using "${dirdropbox}/PGS/ALSPAC/EA/PGS_EA_alspac_ldpred_prior1_ukb_based_children.csv", clear
+		rename 	fid id_child 
+		rename 	scoresum pgs_ukb
+		tempfile temp1
+		save 	`temp1', replace
+		insheet using "${dirdropbox}/PGS/ALSPAC/EA/PGS_EA_alspac_ldpred_prior1_23me_based_children.csv", clear
+		rename 	fid id_child 
+		rename 	scoresum pgs_23me
+		tempfile temp2
+		save 	`temp2', replace
+		*insheet using "${dirdropbox}/PGS/ALSPAC/EA/PGS_EA_alspac_ldpred_prior1_23me_ukb_based_children.csv", clear
+		import delimited "${dirdropbox}/PGS/ALSPAC/EA/PGS_EA_alspac_ldpred_prior1_23me_ukb_based_children.profile", delimiter(space, collapse) varnames(1) clear
+		rename 	fid id_child 
+		rename 	scoresum pgs_23me_ukb
+		merge 	1:1 id_child using `temp1'
+		drop 	_m
+		merge 	1:1 id_child using `temp2'
+		drop 	_m
+		merge 	1:1 id_child using "${dirdata}/Child/PGS_children_alspac_plink_EA.dta"
+		drop 	_merge
+		foreach i in pgs_23me_ukb pgs_ukb pgs_23me pgs_child_EA {
+			sum 	`i'
+			replace `i' = (`i'-r(mean))/r(sd)
+		}
+		replace pgs_23me = pgs_23me*-1
+		corr pgs_child_EA pgs_ukb pgs_23me pgs_23me_ukb 
+
+		* Checking scores - mothers
+		insheet using "${dirdropbox}/PGS/ALSPAC/EA/PGS_EA_alspac_ldpred_prior1_ukb_based_mothers.csv", clear
+		rename 	fid id_child 
+		rename 	scoresum pgs_ukb
+		tempfile temp1
+		save `temp1', replace
+		insheet using "${dirdropbox}/PGS/ALSPAC/EA/PGS_EA_alspac_ldpred_prior1_23me_based_mothers.csv", clear
+		rename 	fid id_child 
+		rename 	scoresum pgs_23me
+		tempfile temp2
+		save `temp2', replace
+		*insheet using "${dirdropbox}/PGS/ALSPAC/EA/PGS_EA_alspac_ldpred_prior1_23me_ukb_based_mothers.csv", clear
+		import delimited "${dirdropbox}/PGS/ALSPAC/EA/PGS_EA_alspac_ldpred_prior1_23me_ukb_based_mothers.profile", delimiter(space, collapse) varnames(1)clear
+		rename 	fid id_child 
+		rename 	scoresum pgs_23me_ukb
+		merge 1:1 id_child using `temp1'
+		drop _m
+		merge 1:1 id_child using `temp2'
+		drop _m
+		replace pgs_23me = pgs_23me*-1
+		corr pgs_ukb pgs_23me pgs_23me_ukb 
+		corr pgs*
+
+
+
 *** Saving new PGSs (based on 23andme and UKB) into Stata format
 foreach i in children mothers {
-	foreach j in ukb 23me {
-		insheet using "${dirdropbox}/PGS/ALSPAC/EA/PGS_EA_alspac_ldpred_prior1_`j'_based_`i'.csv", clear
+	foreach j in ukb 23me 23me_ukb {
+		import delimited "${dirdropbox}/PGS/ALSPAC/EA/PGS_EA_alspac_ldpred_prior1_`j'_based_`i'.profile", delimiter(space, collapse) varnames(1) clear
 		rename 	fid id_child 
 		rename 	scoresum pgs_`i'_`j'
 		compress
 		save 	"${dirdata}/Child/PGS_`i'_`j'.dta", replace
 	}
 }
+
 
 *** On ALSPAC data held at Erasmus
 use 	"${dirdata}/Data_Set/Rietveld_12Sep18.dta", clear
@@ -85,14 +141,14 @@ egen 	id_child = concat(cidB2492 qlet)
 merge 	1:1 id_child using "${dirdata}/Child/ALSPAC_pc_10_CHILDREN.dta"
 drop 	if _m<3
 drop 	_merge
-foreach j in ukb 23me {
+foreach j in ukb 23me 23me_ukb {
 	merge 	1:1 id_child using "${dirdata}/Child/PGS_children_`j'.dta"
 	drop 	if _m<3
 	drop 	_merge
 }
 
 * Merge with mother's PGS (UKB and 23me) and PCs
-foreach j in ukb 23me {
+foreach j in ukb 23me 23me_ukb {
 	gen 	tmp = id_child
 	replace id_child = subinstr(id_child,"A","M",1)
 	merge 	1:1 id_child using "${dirdata}/Child/PGS_mothers_`j'.dta"
@@ -209,7 +265,8 @@ label define treat 0 "Born before Sept" 1 "Born after Sept"
 label values treat treat
 
 ***************************************************************************
-keep 	cidB2492 birth_order male ea ks1 ks2 ks3 ks4 IQ YMoB YoB YoB91 YoB92 YoB93 MoB MoBnew pgs_children_ukb pgs_children_23me pgs_mothers_ukb pgs_mothers_23me c_PC* m_PC* treat* ///
+* Parental investments 
+keep 	cidB2492 birth_order male ea ks1 ks2 ks3 ks4 IQ YMoB YoB YoB91 YoB92 YoB93 MoB MoBnew pgs_children_ukb pgs_children_23me pgs_children_23me_ukb pgs_mothers_ukb pgs_mothers_23me pgs_mothers_23me_ukb c_PC* m_PC* treat* ///
 	kb582 kb583 kb584 kd366 kd367 kd368 kd369 kd370 kd371 kd372 kd373 kd374 kd375 kd376 kd377 kd380 kd320 kd321 kf357 kf358 kf359 kf360 kf361 kf362 kf363 kf364 kf365 kf366 kf368 kf345 kf346 kj297 kj298 kj307 kj308 kj285 kj286 
 
 
@@ -275,12 +332,23 @@ rename 	kj308 talk_when_occupied_42m
 order 	cidB2492 birth_order MoB MoBnew treat YoB YoB91 YoB92 YoB93 YMoB male ea ks* IQ pgs_* c_PC* m_PC* ///
 	home_score_6m score_parenting_mum_6m score_parenting_dad_6m score_teaching_18m score_teaching_30m score_teaching_42m talk_when_occupied_18m talk_when_occupied_30m talk_when_occupied_42m freq_library_18m freq_library_30m freq_library_42m freq_interest_18m freq_interest_30m freq_interest_42m no_books_30m no_books_42m
 
+drop 	talk_when_occupied_18m talk_when_occupied_30m talk_when_occupied_42m freq_library_18m freq_library_30m freq_library_42m freq_interest_18m freq_interest_30m freq_interest_42m no_books_30m no_books_42m 
+
+label 	var home_score_6m "Home score @6m"
+label 	var score_parenting_mum_6m "Mother's parenting score @6m"
+label 	var score_parenting_dad_6m "Partner's parenting score @6m"
+label 	var score_teaching_18m "Mother's teaching score @18m"
+label 	var score_teaching_30m "Mother's teaching score @30m"
+label 	var score_teaching_42m "Mother's teaching score @42m"
+
+* Drop all investment variables
+drop 	home_score_6m score_parenting_mum_6m score_parenting_dad_6m score_teaching_18m score_teaching_30m score_teaching_42m
 
 *rename 	pgs_child_EA PGS
 *label var PGS "Child PGS for Educational Attainment"
 
 * Standardize to have mean 0 and standard deviation 1
-foreach i in pgs_children_ukb pgs_children_23me pgs_mothers_ukb pgs_mothers_23me {
+foreach i in pgs_children_ukb pgs_children_23me pgs_children_23me_ukb pgs_mothers_ukb pgs_mothers_23me pgs_mothers_23me_ukb {
 	qui sum `i'
 	replace `i' = (`i'-r(mean))/(r(sd))
 	gen high`i' = (`i'>0) if `i'<.
@@ -288,9 +356,23 @@ foreach i in pgs_children_ukb pgs_children_23me pgs_mothers_ukb pgs_mothers_23me
 }
 
 
-* Use UKB PGS for now
-gen PGS = pgs_children_ukb
-rename highpgs_children_ukb highPGS
+* Use the PGS with the higher predictive power for EA
+foreach i in ea ks1 ks2 ks3 ks4 {
+	foreach j in ukb 23me 23me_ukb {
+		qui eststo `i'_`j': reg `i' pgs_children_`j' c_PC*, robust
+	}
+}
+esttab ea_ukb ea_23me ea_23me_ukb, b se keep(pgs_children_*) stats(r2 N)
+esttab ks1_ukb ks1_23me ks1_23me_ukb, b se keep(pgs_children_*) stats(r2 N)
+esttab ks2_ukb ks2_23me ks2_23me_ukb, b se keep(pgs_children_*) stats(r2 N)
+esttab ks3_ukb ks3_23me ks3_23me_ukb, b se keep(pgs_children_*) stats(r2 N)
+esttab ks4_ukb ks4_23me ks4_23me_ukb, b se keep(pgs_children_*) stats(r2 N)
+est drop _all
+
+
+* Use meta-analysed PGS 
+gen PGS = pgs_children_23me_ukb
+rename highpgs_children_23me_ukb highPGS
 
 * create all of the demeaned interactions
 gen treat_PGS = treat*PGS
@@ -484,6 +566,37 @@ vioplot ea, over(MoBnew) ytitle("`outcomelabel'") xtitle("Month of birth") bar(c
 		title("`titleea'") legend(on order(1 "High PGS" 2 "Low PGS") pos(6) row(1)) //scheme(s1mono)
 	graph export "${dirfigures}/MoB_ea_byPGS_3mth.png", replace
 	
+
+/* Plots for parental investments
+use "${dirdata}/Data_Set/cleanALSPAC4application.dta", clear
+set scheme plotplainblind
+
+foreach i in home_score_6m score_parenting_mum_6m score_parenting_dad_6m score_teaching_18m score_teaching_30m score_teaching_42m {
+	sum `i'
+	replace `i' = (`i' - r(mean))/r(sd)
+}
+
+	* Collapse the data
+	collapse (mean)  home_score_6m score_parenting_mum_6m score_parenting_dad_6m score_teaching_18m score_teaching_30m score_teaching_42m ///
+	         (sd)    sdhome=home_score_6m sdmumpar=score_parenting_mum_6m sddadpar=score_parenting_dad_6m sdteach18m=score_teaching_18m sdteach30m=score_teaching_30m sdteach42m=score_teaching_42m ///
+	         (count) nhome=home_score_6m nmumpar=score_parenting_mum_6m ndadpar=score_parenting_dad_6m nteach18m=score_teaching_18m nteach30m=score_teaching_30m nteach42m=score_teaching_42m ///
+			 , by(MoB MoBnew)
+	
+	twoway  (line home_score  MoB, sort) ///
+		(line score_parenting_mum_6m MoB, sort) ///
+		(line score_parenting_dad_6m MoB, sort) ///
+		(line score_teaching_18m MoB, sort) ///
+		(line score_teaching_30m MoB, sort) ///
+		(line score_teaching_42m MoB, sort) ///
+		, xlabel(1(1)12, valuelabel) ///
+		ytitle("Standardised score") xtitle("Month of birth") ///
+		legend(on order(1 "Home" 2 "Mum" 3 "Dad" 4 "Teaching@18" 5 "Teaching@30" 6 "Teaching@42") pos(6) row(1)) ///
+		ylabel(-.5(.25).5) yscale(range(-0.5 0.5)) yline(0) ///
+		title("Parental investments by month of birth") //scheme(s1mono)
+	graph export "${dirfigures}/Invest_MoB.png", replace
+*/
+
+
 //restore
 
 * Plot same figure (without CI - too messy if include them) but now by year-month of birth
@@ -595,9 +708,9 @@ foreach outcome in ea ks1 ks2 ks3 ks4 {
 
 ***********         (3)         ***********
 *------- Treatment and PGS: descriptives assuming dichotomous treatment ----------------------------------------------------*
-label var pgs_mothers_ukb "Mother PGS for educational attainment"
+label var pgs_mothers_23me_ukb "Mother PGS for educational attainment"
 local PGSlabel: variable label PGS
-local PGSlabelmother: variable label pgs_mothers_ukb
+local PGSlabelmother: variable label pgs_mothers_23me_ukb
 
 * Violin plot of outcome over the treatment
 vioplot PGS, over(treat) ///
@@ -619,8 +732,8 @@ twoway ///
 
 * Mothers' PGS
 twoway ///
-    (kdensity pgs_mothers_ukb if treat ==0) ///, ci
-	(kdensity pgs_mothers_ukb if treat ==1) ///, ci
+    (kdensity pgs_mothers_23me_ukb if treat ==0) ///, ci
+	(kdensity pgs_mothers_23me_ukb if treat ==1) ///, ci
 	, legend(label(1 "`lab0'") label(2 "`lab1'") row(1) position(6)) ///
 	  xtitle("`PGSlabelmother'") ytitle("Density")
 
@@ -640,21 +753,27 @@ preserve
 
 	* Merge in children's PGSs (UKB and 23me)
 	egen 	id_child = concat(cidB2492 qlet)
-	merge 	1:1 id_child using "${dirdata}/Child/PGS_children_ukb.dta"
+	merge 	1:1 id_child using "${dirdata}/Child/PGS_children_23me_ukb.dta"
 	keep 	if _m==3
 	drop 	_m
 
 	* Merge with mother's PGS (UKB and 23me) and PCs
 	gen 	tmp = id_child
 	replace id_child = subinstr(id_child,"A","M",1)
-	merge 	1:1 id_child using "${dirdata}/Child/PGS_mothers_ukb.dta"
+	merge 	1:1 id_child using "${dirdata}/Child/PGS_mothers_23me_ukb.dta"
 	drop 	if _m==2 	// drop those only in using data
 	replace id_child = tmp
 	drop 	_merge tmp
 	rename qlet birth_order
 
+*merge 	1:1 id_child using "${dirdata}/Child/PGS_children_alspac_plink_EA.dta"
+*drop 	if _m<3
+*drop 	_merge
+*sum pgs_child_EA
+*replace pgs_child_EA = (pgs_child_EA -r(mean))/r(sd)
+
 	* keep selected variables measured around birth of cohort member
-	keep 	cidB2492 birth_order kz021 kz030 ka498 a200 a525 b023 b352a b354a c645a c666a c686a c706a c755 pgs_children_ukb pgs_mothers_ukb
+	keep 	cidB2492 birth_order kz021 kz030 ka498 a200 a525 b023 b352a b354a c645a c666a c686a c706a c755 pgs_children_23me_ukb pgs_mothers_23me_ukb /*pgs_child_EA */
 
 	* Month of birth
 	gen 	MoB = ka498
@@ -774,9 +893,9 @@ preserve
 	drop 	socclass
 	
 	***************************************************************************
-	rename 	pgs_children_ukb PGS
+	rename 	pgs_children_23me_ukb PGS
 	label var PGS "Child PGS for Educational Attainment"
-	rename 	pgs_mothers_ukb PGS_mothers
+	rename 	pgs_mothers_23me_ukb PGS_mothers
 	label var PGS_mothers "Mother PGS for Educational Attainment"
 
 	* Standardize to have mean 0 and standard deviation 1
@@ -793,7 +912,7 @@ preserve
 	keep if window3mth == 1 // keep only 3 months of each side of the cutoff
 
 	***************************************************************************
-	local 	xvars "mumagepreg smokepreg m_anxiety m_depression married mumed2 mumed3 mumed4 mumed5 daded2 daded3 daded4 daded5 SC2 SC3 SC4 SC5 SC6 bw PGS PGS_mothers"
+	local 	xvars "mumagepreg smokepreg m_anxiety m_depression married mumed2 mumed3 mumed4 mumed5 daded2 daded3 daded4 daded5 SC2 SC3 SC4 SC5 SC6 bw PGS PGS_mothers "
 
 	qui estpost sum `xvars' if treat==1
 	qui eststo 	T1
@@ -815,7 +934,61 @@ restore
 
 ***********         (4)         ***********
 *------- PGSxTreat and outcome descriptives ----------------------------------------------------*
+use "${dirdata}/Data_Set/cleanALSPAC4application.dta", clear
+keep if window3mth == 1 // keep only 3 months of each side of the cutoff
+set scheme plotplainblind // s1rcolor plottig plotplain uncluttered lean2 economist
+
 foreach outcome in ea ks1 ks2 ks3 ks4 IQ {
+	local outcomelabel: variable label `outcome'
+	local lab0 : label treat 0
+	local lab1 : label treat 1
+
+	* Bin-scatter plot of PGS over outcome spearately by treatment ("raw" evidence of GxE)
+	capture drop PGS_bin* 
+	capture drop meanP* 
+	capture drop meanD* 
+	capture drop tag*
+	* control
+	xtile 	PGS_bin0 = PGS, nquantiles(200),        if treat == 0
+	bys 	PGS_bin0: egen meanP0 = mean(PGS)       if treat == 0
+	bys 	PGS_bin0: egen meanD0 = mean(`outcome') if treat == 0
+	egen 	tag0 = tag(meanP0 meanD0)               if treat == 0
+	* treatment
+	xtile 	PGS_bin1 = PGS, nquantiles(200),        if treat == 1
+	bys 	PGS_bin1: egen meanP1 = mean(PGS)       if treat == 1
+	bys 	PGS_bin1: egen meanD1 = mean(`outcome') if treat == 1
+	egen 	tag1 = tag(meanP1 meanD1)               if treat == 1
+	
+	* twoway graph
+	twoway  ///
+		(scatter meanD0 PGS if tag0==1) ///
+		(scatter meanD1 PGS if tag1==1) ///
+		(lpolyci `outcome' PGS if treat==0) ///
+		(lpolyci `outcome' PGS if treat==1) ///
+		if PGS>-3 & PGS<3 , /// XXXX CUTTING OFF THE TAILS!
+		legend(label(1 "`lab0', bin scatter")  label(2 "`lab1', bin scatter") ///
+			   label(4 "`lab0', local polynomial smooth") label(5 "`lab1', local polynomial smooth") /// 
+			   label(3 "95% CI") rows(2) position(6) size(vsmall)) ///
+		xtitle("PGS") ytitle("`outcomelabel'") scheme(plotplainblind)
+		
+	graph export "${dirfigures}/PGSxTreat_`outcome'.png", replace
+	drop 	PGS_bin* meanP* meanD* tag*
+} // end foreach outcome
+
+
+/*
+use "${dirdata}/Data_Set/cleanALSPAC4application.dta", clear
+keep if window3mth == 1 // keep only 3 months of each side of the cutoff
+set scheme plotplainblind // s1rcolor plottig plotplain uncluttered lean2 economist
+
+rename 	home_score_6m home
+rename 	score_parenting_mum_6m mumpar 
+rename 	score_parenting_dad_6m dadpar
+rename 	score_teaching_18m teach18m
+rename 	score_teaching_30m teach30m
+rename 	score_teaching_42m teach42m
+
+foreach outcome in home mumpar dadpar teach18m teach30m teach42m {
 	local outcomelabel: variable label `outcome'
 	local lab0 : label treat 0
 	local lab1 : label treat 1
@@ -850,6 +1023,8 @@ foreach outcome in ea ks1 ks2 ks3 ks4 IQ {
 	graph export "${dirfigures}/PGSxTreat_`outcome'.png", replace
 	drop 	PGS_bin* meanP* meanD* tag*
 } // end foreach outcome
+*/
+
 
 } // end if GxE figures
 
@@ -860,158 +1035,376 @@ foreach outcome in ea ks1 ks2 ks3 ks4 IQ {
 * REGRESSIONS
 *---------------------------------------------------------------------------------*
 if ${regs}==1{ // runs the regressions
-use "${dirdata}/Data_Set/cleanALSPAC4application.dta", clear
 
-* Some simple regressions
-* create the interaction terms between PGS and the controls
-foreach control of varlist male YoB92 c_PC1-c_PC10{
-	gen PGSx`control' = `control'*PGS
-	gen treatx`control' = `control'*treat
+** Comparing predictive power from different PGSs
+est drop _all
+foreach pgs in plink ukb 23me 23me_ukb {
+	use "${dirdata}/Data_Set/cleanALSPAC4application.dta", clear
+	keep if window3mth == 1
+
+	if "`pgs'"=="plink" {
+		* To replicate the earlier results using PLINK-based PGS:
+		drop if cidB==.
+		drop 	PGS 
+		merge 	1:1 cidB2492 birth_order using "${dirdata}/Child/PGS_children_alspac_plink_EA.dta"
+		drop 	if _m<3
+		sum 	pgs_child_EA
+		gen 	PGS = (pgs_child_EA -r(mean))/r(sd)
+		eststo: reg ks2 PGS c_PC*, robust
+	}
+	if "`pgs'"=="ukb" {
+		drop 	PGS 
+		gen 	PGS = pgs_children_ukb
+		eststo: reg ks2 PGS c_PC*, robust
+	}
+	if "`pgs'"=="23me" {
+		* Using LDpred-based PGS with 23&me sumstats:
+		drop 	PGS 
+		gen 	PGS = pgs_children_23me
+		eststo: reg ks2 PGS c_PC*, robust
+	}
+	else if "`pgs'"=="23me_ukb" {
+		* Using LDpred-based PGS with 23&me sumstats:
+		drop 	PGS 
+		gen 	PGS = pgs_children_23me_ukb
+		eststo: reg ks2 PGS c_PC*, robust
+	}
+}
+esttab 	, b se keep(PGS) star(* 0.10 ** 0.05 *** 0.01) stats(r2 N, label("R2" "Observations") fmt(3 0)) nonotes 
+
+esttab 	using "${dirtables}/PredictivePower.tex", replace ///
+	frag bookt b(3) se(3) keep(PGS) star(* 0.10 ** 0.05 *** 0.01) ///
+	mgroups("PLINK" "UKB" "23\&me", pattern(1 1 1) span ///
+	prefix(\multicolumn{@span}{c}{) suffix(}) erepeat(\cmidrule(lr){@span})) ///
+	nomtitles stats(r2 N, label("R2" "Observations") fmt(3 0)) nonotes ///
+	coeflabel(PGS "PGS") 
+
+foreach pgs in plink ukb 23me 23me_ukb {
+	use "${dirdata}/Data_Set/cleanALSPAC4application.dta", clear
+	keep if window3mth == 1
+
+	if "`pgs'"=="plink" {
+		* To replicate the earlier results using PLINK-based PGS:
+		drop if cidB==.
+		drop PGS treat_PGS MoB_PGS MoBnew_PGS MoB_PGS_treat MoBnew_PGS_treat 
+
+		merge 	1:1 cidB2492 birth_order using "${dirdata}/Child/PGS_children_alspac_plink_EA.dta"
+		drop 	if _m<3
+		drop 	_merge
+		sum 	pgs_child_EA
+		gen 	PGS = (pgs_child_EA -r(mean))/r(sd)
+
+		* create all of the demeaned interactions
+		gen treat_PGS = treat*PGS
+
+		gen MoB_PGS = MoB0*PGS
+		gen MoBnew_PGS = MoBnew0*PGS
+
+		gen MoB_PGS_treat = MoB0*PGS*treat
+		gen MoBnew_PGS_treat = MoBnew0*PGS*treat
+	}
+	if "`pgs'"=="ukb" {
+		* Using LDpred-based PGS with 23&me sumstats:
+		drop PGS treat_PGS MoB_PGS MoBnew_PGS MoB_PGS_treat MoBnew_PGS_treat 
+		gen PGS = pgs_children_ukb
+
+		* create all of the demeaned interactions
+		gen treat_PGS = treat*PGS
+
+		gen MoB_PGS = MoB0*PGS
+		gen MoBnew_PGS = MoBnew0*PGS
+
+		gen MoB_PGS_treat = MoB0*PGS*treat
+		gen MoBnew_PGS_treat = MoBnew0*PGS*treat
+	}
+	if "`pgs'"=="23me" {
+		* Using LDpred-based PGS with 23&me sumstats:
+		drop PGS treat_PGS MoB_PGS MoBnew_PGS MoB_PGS_treat MoBnew_PGS_treat 
+		gen PGS = pgs_children_23me
+
+		* create all of the demeaned interactions
+		gen treat_PGS = treat*PGS
+
+		gen MoB_PGS = MoB0*PGS
+		gen MoBnew_PGS = MoBnew0*PGS
+
+		gen MoB_PGS_treat = MoB0*PGS*treat
+		gen MoBnew_PGS_treat = MoBnew0*PGS*treat
+	}
+	else if "`pgs'"=="23me_ukb" {
+		* Using LDpred-based PGS with 23&me sumstats:
+		drop PGS treat_PGS MoB_PGS MoBnew_PGS MoB_PGS_treat MoBnew_PGS_treat 
+		gen PGS = pgs_children_23me_ukb
+
+		* create all of the demeaned interactions
+		gen treat_PGS = treat*PGS
+
+		gen MoB_PGS = MoB0*PGS
+		gen MoBnew_PGS = MoBnew0*PGS
+
+		gen MoB_PGS_treat = MoB0*PGS*treat
+		gen MoBnew_PGS_treat = MoBnew0*PGS*treat
+	}
+
+	* create the interaction terms between PGS and the controls
+	foreach control of varlist male YoB92 c_PC1-c_PC10{
+		gen PGSx`control' = `control'*PGS
+		gen treatx`control' = `control'*treat
+	}
+
+
+	***************************************************************************
+	* Table with only entry assessment
+	qui eststo 	m3: reg ea  treat           treat_MoB MoB PGS                       male YoB92 c_PC*                                                    , robust cluster(MoB), if window3mth == 1
+	qui eststo 	m4: reg ea  treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if window3mth == 1
+
+	esttab 	m3 m4, b se keep(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) order(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) star(* 0.10 ** 0.05 *** 0.01) stats(r2 N, fmt(3 0))
+
+	esttab 	m3 m4 using "${dirtables}/MoB_ea_`pgs'.tex", replace ///
+		frag bookt b(3) se(3) keep(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) ///
+		order(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) star(* 0.10 ** 0.05 *** 0.01) ///
+		nomtitles stats(r2 N, label("R2" "Observations") fmt(3 0)) nonotes ///
+		coeflabel(MoB "MoB" MoB_PGS "MoB*PGS" MoB_PGS_treat "MoB*PGS*Treated" PGS "PGS" treat "Treated" treat_MoB "Treated*MoB" treat_PGS "Treated*PGS") 
+
+	* Other KS's
+	qui eststo 	k1: reg ks1 treat treat_MoB MoB PGS male YoB92 c_PC*, robust cluster(MoB), if window3mth == 1
+	qui eststo 	k2: reg ks1 treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if window3mth == 1
+	qui eststo 	k3: reg ks2 treat treat_MoB MoB PGS male YoB92 c_PC*, robust cluster(MoB), if window3mth == 1
+	qui eststo 	k4: reg ks2 treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if window3mth == 1
+	qui eststo 	k5: reg ks3 treat treat_MoB MoB PGS male YoB92 c_PC*, robust cluster(MoB), if window3mth == 1
+	qui eststo 	k6: reg ks3 treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if window3mth == 1
+	qui eststo 	k7: reg ks4 treat treat_MoB MoB PGS male YoB92 c_PC*, robust cluster(MoB), if window3mth == 1
+	qui eststo 	k8: reg ks4 treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if window3mth == 1
+
+	esttab 	k1 k2 k3 k4 k5 k6 k7 k8 , b se keep(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) order(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) star(* 0.10 ** 0.05 *** 0.01) stats(r2 N, fmt(3 0))
+
+	esttab 	k1 k2 k3 k4 k5 k6 k7 k8 using "${dirtables}/MoB_ks_`pgs'.tex", replace ///
+		frag bookt b(3) se(3) keep(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) ///
+		order(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) star(* 0.10 ** 0.05 *** 0.01) ///
+		nomtitles stats(r2 N, label("R2" "Observations") fmt(3 0)) nonotes nonumber ///
+		mgroups("Key Stage 1" "Key Stage 2" "Key Stage 3" "Key Stage 4", pattern(1 0 1 0 1 0 1 0) span ///
+		prefix(\multicolumn{@span}{c}{) suffix(}) erepeat(\cmidrule(lr){@span})) ///
+		coeflabel(MoB "MoB" MoB_PGS "MoB*PGS" MoB_PGS_treat "MoB*PGS*Treated" PGS "PGS" treat "Treated" treat_MoB "Treated*MoB" treat_PGS "Treated*PGS") 
 }
 
-***************************************************************************
-* Table with only entry assessment
-eststo 	m3: reg ea  treat           treat_MoB MoB PGS                       male YoB92 c_PC*                                                    , robust cluster(MoB), if window3mth == 1
-eststo 	m4: reg ea  treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if window3mth == 1
 
-esttab 	m3 m4, b se keep(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) order(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) star(* 0.10 ** 0.05 *** 0.01) stats(r2 N, fmt(3 0))
-
-esttab 	m3 m4 using "${dirtables}/MoB_ea.tex", replace ///
-	frag bookt b(3) se(3) keep(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) ///
-	order(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) star(* 0.10 ** 0.05 *** 0.01) ///
-	nomtitles stats(r2 N, label("R2" "Observations") fmt(3 0)) nonotes ///
-	coeflabel(MoB "MoB" MoB_PGS "MoB*PGS" MoB_PGS_treat "MoB*PGS*Treated" PGS "PGS" treat "Treated" treat_MoB "Treated*MoB" treat_PGS "Treated*PGS") 
-
-* Other KS's
-eststo 	k1: reg ks1 treat treat_MoB MoB PGS male YoB92 c_PC*, robust cluster(MoB), if window3mth == 1
-eststo 	k2: reg ks1 treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if window3mth == 1
-eststo 	k3: reg ks2 treat treat_MoB MoB PGS male YoB92 c_PC*, robust cluster(MoB), if window3mth == 1
-eststo 	k4: reg ks2 treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if window3mth == 1
-eststo 	k5: reg ks3 treat treat_MoB MoB PGS male YoB92 c_PC*, robust cluster(MoB), if window3mth == 1
-eststo 	k6: reg ks3 treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if window3mth == 1
-eststo 	k7: reg ks4 treat treat_MoB MoB PGS male YoB92 c_PC*, robust cluster(MoB), if window3mth == 1
-eststo 	k8: reg ks4 treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if window3mth == 1
-
-esttab 	k1 k2 k3 k4 k5 k6 k7 k8 , b se keep(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) order(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) star(* 0.10 ** 0.05 *** 0.01) stats(r2 N, fmt(3 0))
-
-esttab 	k1 k2 k3 k4 k5 k6 k7 k8 using "${dirtables}/MoB_ks.tex", replace ///
-	frag bookt b(3) se(3) keep(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) ///
-	order(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) star(* 0.10 ** 0.05 *** 0.01) ///
-	nomtitles stats(r2 N, label("R2" "Observations") fmt(3 0)) nonotes nonumber ///
-	mgroups("Key Stage 1" "Key Stage 2" "Key Stage 3" "Key Stage 4", pattern(1 0 1 0 1 0 1 0) span ///
-	prefix(\multicolumn{@span}{c}{) suffix(}) erepeat(\cmidrule(lr){@span})) ///
-	coeflabel(MoB "MoB" MoB_PGS "MoB*PGS" MoB_PGS_treat "MoB*PGS*Treated" PGS "PGS" treat "Treated" treat_MoB "Treated*MoB" treat_PGS "Treated*PGS") 
-
-	
-
-***************************************************************************
+/***************************************************************************
 *** Other parental investments
-sum home_score_6m score_parenting_mum_6m score_parenting_dad_6m score_teaching_18m score_teaching_30m score_teaching_42m talk_when_occupied_18m talk_when_occupied_30m talk_when_occupied_42m freq_library_18m freq_library_30m freq_library_42m freq_interest_18m freq_interest_30m freq_interest_42m no_books_30m no_books_42m
+foreach pgs in plink ukb 23me {
+	foreach sample in ea ks2 {
+		use "${dirdata}/Data_Set/cleanALSPAC4application.dta", clear
+		keep if window3mth == 1
 
-eststo sumstats: quietly estpost sum home_score_6m score_parenting_mum_6m score_parenting_dad_6m score_teaching_18m score_teaching_30m score_teaching_42m talk_when_occupied_18m talk_when_occupied_30m talk_when_occupied_42m freq_library_18m freq_library_30m freq_library_42m freq_interest_18m freq_interest_30m freq_interest_42m no_books_30m no_books_42m, detail
+		if "`pgs'"=="plink" {
+			* To replicate the earlier results using PLINK-based PGS:
+			drop if cidB==.
+			drop PGS treat_PGS MoB_PGS MoBnew_PGS MoB_PGS_treat MoBnew_PGS_treat 
 
-esttab sumstats, cells("mean p50 min max sd") nonumbers label
+			merge 	1:1 cidB2492 birth_order using "${dirdata}/Child/PGS_children_alspac_plink_EA.dta"
+			drop 	if _m<3
+			drop 	_merge
+			sum 	pgs_child_EA
+			gen 	PGS = (pgs_child_EA -r(mean))/r(sd)
 
-esttab sumstats using "${dirtables}/sumstats.tex", booktabs ///
-       label nonumbers cells("mean p50 min max sd") replace 
-       
-       
-* Home score, parenting score
-est drop _all
-qui eststo: reg home_score_6m 	   treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if window3mth == 1
-qui eststo: reg score_parenting_mum_6m treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if window3mth == 1
-qui eststo: reg score_parenting_dad_6m treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if window3mth == 1
+			* create all of the demeaned interactions
+			gen treat_PGS = treat*PGS
 
-esttab 	, b se keep(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) order(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) star(* 0.10 ** 0.05 *** 0.01) stats(r2 N, fmt(3 0))
+			gen MoB_PGS = MoB0*PGS
+			gen MoBnew_PGS = MoBnew0*PGS
 
-esttab 	using "${dirtables}/invest1.tex", replace ///
-	frag bookt b(3) se(3) keep(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) ///
-	order(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) star(* 0.10 ** 0.05 *** 0.01) ///
-	nomtitles stats(r2 N, label("R2" "Observations") fmt(3 0)) nonotes ///
-	mgroups("Home score" "Parenting Mum" "Parenting Dad", pattern(1 1 1) span ///
-	prefix(\multicolumn{@span}{c}{) suffix(}) erepeat(\cmidrule(lr){@span})) ///
-	coeflabel(MoB "MoB" MoB_PGS "MoB*PGS" MoB_PGS_treat "MoB*PGS*Treated" PGS "PGS" treat "Treated" treat_MoB "Treated*MoB" treat_PGS "Treated*PGS") 
+			gen MoB_PGS_treat = MoB0*PGS*treat
+			gen MoBnew_PGS_treat = MoBnew0*PGS*treat
+		}
+		if "`pgs'"=="ukb" {
+		}
+		if "`pgs'"=="23me" {
+			* Using LDpred-based PGS with 23&me sumstats:
+			drop PGS treat_PGS MoB_PGS MoBnew_PGS MoB_PGS_treat MoBnew_PGS_treat 
+			gen PGS = pgs_children_23me
 
-* Teaching scores
-est drop _all 
-qui eststo: reg score_teaching_18m treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if window3mth == 1
-qui eststo: reg score_teaching_30m treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if window3mth == 1
-qui eststo: reg score_teaching_42m treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if window3mth == 1
+			* create all of the demeaned interactions
+			gen treat_PGS = treat*PGS
 
-esttab 	, b se keep(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) order(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) star(* 0.10 ** 0.05 *** 0.01) stats(r2 N, fmt(3 0))
+			gen MoB_PGS = MoB0*PGS
+			gen MoBnew_PGS = MoBnew0*PGS
 
-esttab 	using "${dirtables}/invest2.tex", replace ///
-	frag bookt b(3) se(3) keep(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) ///
-	order(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) star(* 0.10 ** 0.05 *** 0.01) ///
-	nomtitles stats(r2 N, label("R2" "Observations") fmt(3 0)) nonotes ///
-	mgroups("Teaching score @18m" "Teaching score @30m" "Teaching score @42m", pattern(1 1 1) span ///
-	prefix(\multicolumn{@span}{c}{) suffix(}) erepeat(\cmidrule(lr){@span})) ///
-	coeflabel(MoB "MoB" MoB_PGS "MoB*PGS" MoB_PGS_treat "MoB*PGS*Treated" PGS "PGS" treat "Treated" treat_MoB "Treated*MoB" treat_PGS "Treated*PGS") 
+			gen MoB_PGS_treat = MoB0*PGS*treat
+			gen MoBnew_PGS_treat = MoBnew0*PGS*treat
+		}
+		else if "`pgs'"=="23me_ukb" {
+			* Using LDpred-based PGS with 23&me sumstats:
+			drop PGS treat_PGS MoB_PGS MoBnew_PGS MoB_PGS_treat MoBnew_PGS_treat 
+			gen PGS = pgs_children_23me_ukb
 
-* Talk when occupied
-est drop _all 
-qui eststo: reg talk_when_occupied_18m treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if window3mth == 1
-qui eststo: reg talk_when_occupied_30m treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if window3mth == 1
-qui eststo: reg talk_when_occupied_42m treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if window3mth == 1
+			* create all of the demeaned interactions
+			gen treat_PGS = treat*PGS
 
-esttab 	, b se keep(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) order(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) star(* 0.10 ** 0.05 *** 0.01) stats(r2 N, fmt(3 0))
+			gen MoB_PGS = MoB0*PGS
+			gen MoBnew_PGS = MoBnew0*PGS
 
-esttab 	using "${dirtables}/invest3.tex", replace ///
-	frag bookt b(3) se(3) keep(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) ///
-	order(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) star(* 0.10 ** 0.05 *** 0.01) ///
-	nomtitles stats(r2 N, label("R2" "Observations") fmt(3 0)) nonotes ///
-	mgroups("Talk @18m" "Talk @30m" "Talk @42m", pattern(1 1 1) span ///
-	prefix(\multicolumn{@span}{c}{) suffix(}) erepeat(\cmidrule(lr){@span})) ///
-	coeflabel(MoB "MoB" MoB_PGS "MoB*PGS" MoB_PGS_treat "MoB*PGS*Treated" PGS "PGS" treat "Treated" treat_MoB "Treated*MoB" treat_PGS "Treated*PGS") 
+			gen MoB_PGS_treat = MoB0*PGS*treat
+			gen MoBnew_PGS_treat = MoBnew0*PGS*treat
+		}
+		
+		* create the interaction terms between PGS and the controls
+		foreach control of varlist male YoB92 c_PC1-c_PC10{
+			gen PGSx`control' = `control'*PGS
+			gen treatx`control' = `control'*treat
+		}
 
-* Frequency visit library
-est drop _all 
-qui eststo: reg freq_library_18m treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if window3mth == 1
-qui eststo: reg freq_library_30m treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if window3mth == 1
-qui eststo: reg freq_library_42m treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if window3mth == 1
+		if "`sample'" == "ea" {
+			drop if ea==.
+		} 
+		else if "`sample'" == "ks2" {
+			drop if ks2==.
+		}
 
-esttab 	, b se keep(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) order(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) star(* 0.10 ** 0.05 *** 0.01) stats(r2 N, fmt(3 0))
+		if "`pgs'"=="plink" & "`sample'"=="ks2" {
+			twoway (kdensity home_score_6m, lpattern(solid) lc(gs0)) ///
+				(kdensity score_parenting_mum_6m, lpattern(dash) lc(gs0)) ///
+				(kdensity score_parenting_dad_6m, lpattern(dash_dot) lc(gs0)), ///
+				title("Parental investments at 6m") scheme(s1mono) ///
+				legend(on order(1 "Home score" 2 "Parenting mum" 3 "Parenting dad") pos(6) row(1))
+			graph export "${dirfigures}/Investments1_unadj.png", replace
 
-esttab 	using "${dirtables}/invest4.tex", replace ///
-	frag bookt b(3) se(3) keep(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) ///
-	order(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) star(* 0.10 ** 0.05 *** 0.01) ///
-	nomtitles stats(r2 N, label("R2" "Observations") fmt(3 0)) nonotes ///
-	mgroups("Library @18m" "Library @30m" "Library @42m", pattern(1 1 1) span ///
-	prefix(\multicolumn{@span}{c}{) suffix(}) erepeat(\cmidrule(lr){@span})) ///
-	coeflabel(MoB "MoB" MoB_PGS "MoB*PGS" MoB_PGS_treat "MoB*PGS*Treated" PGS "PGS" treat "Treated" treat_MoB "Treated*MoB" treat_PGS "Treated*PGS") 
+			twoway (kdensity score_teaching_18m, lpattern(solid) lc(gs0)) ///
+				(kdensity score_teaching_30m, lpattern(dash) lc(gs0)) ///
+				(kdensity score_teaching_42m, lpattern(dash_dot) lc(gs0)), ///
+				title("Parental teaching scores") scheme(s1mono) ///
+				legend(on order(1 "18m" 2 "30m" 3 "42m") pos(6) row(1))
+			graph export "${dirfigures}/Investments2_unadj.png", replace
+		}
 
-* Frequency visit other places of interest
-est drop _all 
-qui eststo: reg freq_interest_18m treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if window3mth == 1
-qui eststo: reg freq_interest_30m treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if window3mth == 1
-qui eststo: reg freq_interest_42m treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if window3mth == 1
+		* Summary statistics
+		foreach i in home_score_6m score_parenting_mum_6m score_parenting_dad_6m score_teaching_18m score_teaching_30m score_teaching_42m {
+			qui sum `i' 
+			replace `i' = (`i' - r(mean))/r(sd)
+		}
+		sum home_score_6m score_parenting_mum_6m score_parenting_dad_6m score_teaching_18m score_teaching_30m score_teaching_42m 
 
-esttab 	, b se keep(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) order(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) star(* 0.10 ** 0.05 *** 0.01) stats(r2 N, fmt(3 0))
+		eststo sumstats: quietly estpost sum home_score_6m score_parenting_mum_6m score_parenting_dad_6m score_teaching_18m score_teaching_30m score_teaching_42m , detail
 
-esttab 	using "${dirtables}/invest5.tex", replace ///
-	frag bookt b(3) se(3) keep(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) ///
-	order(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) star(* 0.10 ** 0.05 *** 0.01) ///
-	nomtitles stats(r2 N, label("R2" "Observations") fmt(3 0)) nonotes ///
-	mgroups("Interest @18m" "Interest @30m" "Interest @42m", pattern(1 1 1) span ///
-	prefix(\multicolumn{@span}{c}{) suffix(}) erepeat(\cmidrule(lr){@span})) ///
-	coeflabel(MoB "MoB" MoB_PGS "MoB*PGS" MoB_PGS_treat "MoB*PGS*Treated" PGS "PGS" treat "Treated" treat_MoB "Treated*MoB" treat_PGS "Treated*PGS") 
+		esttab sumstats, cells("mean p50 min max sd") nonumbers label
 
-* Number of books
-est drop _all 
-qui eststo: reg no_books_30m treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if window3mth == 1
-qui eststo: reg no_books_42m treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if window3mth == 1
+		esttab sumstats using "${dirtables}/sumstats.tex", booktabs ///
+		       label nonumbers cells("mean p50 min max sd") replace 
+		       
+		if "`pgs'"=="plink" & "`sample'"=="ks2" {
+			twoway (kdensity home_score_6m, lpattern(solid) lc(gs0)) ///
+				(kdensity score_parenting_mum_6m, lpattern(dash) lc(gs0)) ///
+				(kdensity score_parenting_dad_6m, lpattern(dash_dot) lc(gs0)), ///
+				title("Parental investments at 6m") scheme(s1mono) ///
+				legend(on order(1 "Home score" 2 "Parenting mum" 3 "Parenting dad") pos(6) row(1))
+			graph export "${dirfigures}/Investments1.png", replace
 
-esttab 	, b se keep(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) order(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) star(* 0.10 ** 0.05 *** 0.01) stats(r2 N, fmt(3 0))
+			twoway (kdensity score_teaching_18m, lpattern(solid) lc(gs0)) ///
+				(kdensity score_teaching_30m, lpattern(dash) lc(gs0)) ///
+				(kdensity score_teaching_42m, lpattern(dash_dot) lc(gs0)), ///
+				title("Parental teaching scores") scheme(s1mono) ///
+				legend(on order(1 "18m" 2 "30m" 3 "42m") pos(6) row(1))
+			graph export "${dirfigures}/Investments2.png", replace
+		}
 
-esttab 	using "${dirtables}/invest6.tex", replace ///
-	frag bookt b(3) se(3) keep(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) ///
-	order(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) star(* 0.10 ** 0.05 *** 0.01) ///
-	nomtitles stats(r2 N, label("R2" "Observations") fmt(3 0)) nonotes ///
-	mgroups("No of books @30m" "No of books @42m", pattern(1 1) span ///
-	prefix(\multicolumn{@span}{c}{) suffix(}) erepeat(\cmidrule(lr){@span})) ///
-	coeflabel(MoB "MoB" MoB_PGS "MoB*PGS" MoB_PGS_treat "MoB*PGS*Treated" PGS "PGS" treat "Treated" treat_MoB "Treated*MoB" treat_PGS "Treated*PGS") 
+		* Some simple regressions
+		* Home & parenting scores
+		est drop _all
+		qui eststo: reg home_score_6m 	   treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB)
+		qui eststo: reg score_parenting_mum_6m treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB)
+		qui eststo: reg score_parenting_dad_6m treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB)
 
+		esttab 	, b se keep(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) order(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) star(* 0.10 ** 0.05 *** 0.01) stats(r2 N, fmt(3 0))
 
+		esttab 	using "${dirtables}/invest1_`sample'_`pgs'.tex", replace ///
+			frag bookt b(3) se(3) keep(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) ///
+			order(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) star(* 0.10 ** 0.05 *** 0.01) ///
+			nomtitles stats(r2 N, label("R2" "Observations") fmt(3 0)) nonotes ///
+			mgroups("Home score @6m" "Parenting Mum @6m" "Parenting Dad @6m", pattern(1 1 1) span ///
+			prefix(\multicolumn{@span}{c}{) suffix(}) erepeat(\cmidrule(lr){@span})) ///
+			coeflabel(MoB "MoB" MoB_PGS "MoB*PGS" MoB_PGS_treat "MoB*PGS*Treated" PGS "PGS" treat "Treated" treat_MoB "Treated*MoB" treat_PGS "Treated*PGS") 
+
+		* Teaching scores
+		est drop _all 
+		qui eststo: reg score_teaching_18m treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if ks2<. & window3mth == 1
+		qui eststo: reg score_teaching_30m treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if ks2<. & window3mth == 1
+		qui eststo: reg score_teaching_42m treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if ks2<. & window3mth == 1
+
+		esttab 	, b se keep(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) order(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) star(* 0.10 ** 0.05 *** 0.01) stats(r2 N, fmt(3 0))
+
+		esttab 	using "${dirtables}/invest2_`sample'_`pgs'.tex", replace ///
+			frag bookt b(3) se(3) keep(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) ///
+			order(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) star(* 0.10 ** 0.05 *** 0.01) ///
+			nomtitles stats(r2 N, label("R2" "Observations") fmt(3 0)) nonotes ///
+			mgroups("Teaching score @18m" "Teaching score @30m" "Teaching score @42m", pattern(1 1 1) span ///
+			prefix(\multicolumn{@span}{c}{) suffix(}) erepeat(\cmidrule(lr){@span})) ///
+			coeflabel(MoB "MoB" MoB_PGS "MoB*PGS" MoB_PGS_treat "MoB*PGS*Treated" PGS "PGS" treat "Treated" treat_MoB "Treated*MoB" treat_PGS "Treated*PGS") 
+
+		/*
+		* Talk when occupied
+		est drop _all 
+		qui eststo: reg talk_when_occupied_18m treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if window3mth == 1
+		qui eststo: reg talk_when_occupied_30m treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if window3mth == 1
+		qui eststo: reg talk_when_occupied_42m treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if window3mth == 1
+
+		esttab 	, b se keep(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) order(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) star(* 0.10 ** 0.05 *** 0.01) stats(r2 N, fmt(3 0))
+
+		esttab 	using "${dirtables}/invest3.tex", replace ///
+			frag bookt b(3) se(3) keep(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) ///
+			order(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) star(* 0.10 ** 0.05 *** 0.01) ///
+			nomtitles stats(r2 N, label("R2" "Observations") fmt(3 0)) nonotes ///
+			mgroups("Talk @18m" "Talk @30m" "Talk @42m", pattern(1 1 1) span ///
+			prefix(\multicolumn{@span}{c}{) suffix(}) erepeat(\cmidrule(lr){@span})) ///
+			coeflabel(MoB "MoB" MoB_PGS "MoB*PGS" MoB_PGS_treat "MoB*PGS*Treated" PGS "PGS" treat "Treated" treat_MoB "Treated*MoB" treat_PGS "Treated*PGS") 
+
+		* Frequency visit library
+		est drop _all 
+		qui eststo: reg freq_library_18m treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if window3mth == 1
+		qui eststo: reg freq_library_30m treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if window3mth == 1
+		qui eststo: reg freq_library_42m treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if window3mth == 1
+
+		esttab 	, b se keep(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) order(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) star(* 0.10 ** 0.05 *** 0.01) stats(r2 N, fmt(3 0))
+
+		esttab 	using "${dirtables}/invest4.tex", replace ///
+			frag bookt b(3) se(3) keep(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) ///
+			order(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) star(* 0.10 ** 0.05 *** 0.01) ///
+			nomtitles stats(r2 N, label("R2" "Observations") fmt(3 0)) nonotes ///
+			mgroups("Library @18m" "Library @30m" "Library @42m", pattern(1 1 1) span ///
+			prefix(\multicolumn{@span}{c}{) suffix(}) erepeat(\cmidrule(lr){@span})) ///
+			coeflabel(MoB "MoB" MoB_PGS "MoB*PGS" MoB_PGS_treat "MoB*PGS*Treated" PGS "PGS" treat "Treated" treat_MoB "Treated*MoB" treat_PGS "Treated*PGS") 
+
+		* Frequency visit other places of interest
+		est drop _all 
+		qui eststo: reg freq_interest_18m treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if window3mth == 1
+		qui eststo: reg freq_interest_30m treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if window3mth == 1
+		qui eststo: reg freq_interest_42m treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if window3mth == 1
+
+		esttab 	, b se keep(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) order(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) star(* 0.10 ** 0.05 *** 0.01) stats(r2 N, fmt(3 0))
+
+		esttab 	using "${dirtables}/invest5.tex", replace ///
+			frag bookt b(3) se(3) keep(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) ///
+			order(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) star(* 0.10 ** 0.05 *** 0.01) ///
+			nomtitles stats(r2 N, label("R2" "Observations") fmt(3 0)) nonotes ///
+			mgroups("Interest @18m" "Interest @30m" "Interest @42m", pattern(1 1 1) span ///
+			prefix(\multicolumn{@span}{c}{) suffix(}) erepeat(\cmidrule(lr){@span})) ///
+			coeflabel(MoB "MoB" MoB_PGS "MoB*PGS" MoB_PGS_treat "MoB*PGS*Treated" PGS "PGS" treat "Treated" treat_MoB "Treated*MoB" treat_PGS "Treated*PGS") 
+
+		* Number of books
+		est drop _all 
+		qui eststo: reg no_books_30m treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if window3mth == 1
+		qui eststo: reg no_books_42m treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if window3mth == 1
+
+		esttab 	, b se keep(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) order(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) star(* 0.10 ** 0.05 *** 0.01) stats(r2 N, fmt(3 0))
+
+		esttab 	using "${dirtables}/invest6.tex", replace ///
+			frag bookt b(3) se(3) keep(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) ///
+			order(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) star(* 0.10 ** 0.05 *** 0.01) ///
+			nomtitles stats(r2 N, label("R2" "Observations") fmt(3 0)) nonotes ///
+			mgroups("No of books @30m" "No of books @42m", pattern(1 1) span ///
+			prefix(\multicolumn{@span}{c}{) suffix(}) erepeat(\cmidrule(lr){@span})) ///
+			coeflabel(MoB "MoB" MoB_PGS "MoB*PGS" MoB_PGS_treat "MoB*PGS*Treated" PGS "PGS" treat "Treated" treat_MoB "Treated*MoB" treat_PGS "Treated*PGS") 
+		*/
+	}
+}
+*/
 
 ***************************************************************************
 /***** No GxE interactions
@@ -1135,42 +1528,131 @@ forvalues width=2/5{
 		rdrobust `test' MoB if highPGS==0, c(9) covs(PGS male c_PC*)
 	}
 
-
-*------ Permutation test for EA
-set scheme plotplainblind
-
-cd ${dirfigures}
-capture rm permutation.dta
-
-global controlsX       treat_MoB MoB_PGS MoB_PGS_treat MoB male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92
-
-* true regressions
-reg ea i.treat PGS treat#c.PGS $controlsX , cluster(MoB), if window3mth == 1
-scalar beta_x  = _b[1.treat#c.PGS]
-scalar tstat_x = _b[1.treat#c.PGS]/_se[1.treat#c.PGS]
-
-* permutations
-local iter 100
-permute PGS treat coef=_b[1.treat#c.PGS] se=_se[1.treat#c.PGS], saving(permutation) reps(`iter'): ///
-reg ea i.treat PGS treat#c.PGS $controlsX , cluster(MoB), if window3mth == 1
-
-*--Plot the histogram
-preserve 
-
-use permutation.dta, replace
-
-hist coef, addplot(pci 0 0.16 4 0.16) xtitle("Coefficient interaction term") legend(off)
-graph export "${dirfigures}/permutation_coefficient.png", replace
-
-gen tstat = coef/se
-hist tstat, addplot(pci 0 2 0.4 2) xtitle("t-statistic interaction term") legend(off)
-graph export "${dirfigures}/permutation_tstat.png", replace
-
-restore
-*--
-
 } // end if regs
 
+
+
+
+
+
+if ${permutation} == 1 {
+
+set seed 31415
+foreach pgs in plink ukb 23me 23me_ukb {
+	use "${dirdata}/Data_Set/cleanALSPAC4application.dta", clear
+
+	if "`pgs'"=="plink" {
+		* To replicate the earlier results using PLINK-based PGS:
+		drop if cidB==.
+		drop PGS treat_PGS MoB_PGS MoBnew_PGS MoB_PGS_treat MoBnew_PGS_treat 
+
+		merge 	1:1 cidB2492 birth_order using "${dirdata}/Child/PGS_children_alspac_plink_EA.dta"
+		drop 	if _m<3
+		drop 	_merge
+		sum 	pgs_child_EA
+		gen 	PGS = (pgs_child_EA -r(mean))/r(sd)
+
+		* create all of the demeaned interactions
+		gen treat_PGS = treat*PGS
+
+		gen MoB_PGS = MoB0*PGS
+		gen MoBnew_PGS = MoBnew0*PGS
+
+		gen MoB_PGS_treat = MoB0*PGS*treat
+		gen MoBnew_PGS_treat = MoBnew0*PGS*treat
+	}
+	if "`pgs'"=="ukb" {
+	}
+	if "`pgs'"=="23me" {
+		* Using LDpred-based PGS with 23&me sumstats:
+		drop PGS treat_PGS MoB_PGS MoBnew_PGS MoB_PGS_treat MoBnew_PGS_treat 
+		gen PGS = pgs_children_23me
+
+		* create all of the demeaned interactions
+		gen treat_PGS = treat*PGS
+
+		gen MoB_PGS = MoB0*PGS
+		gen MoBnew_PGS = MoBnew0*PGS
+
+		gen MoB_PGS_treat = MoB0*PGS*treat
+		gen MoBnew_PGS_treat = MoBnew0*PGS*treat
+	}
+
+	else if "`pgs'"=="23me_ukb" {
+		* Using LDpred-based PGS with 23&me sumstats:
+		drop PGS treat_PGS MoB_PGS MoBnew_PGS MoB_PGS_treat MoBnew_PGS_treat 
+		gen PGS = pgs_children_23me_ukb
+
+		* create all of the demeaned interactions
+		gen treat_PGS = treat*PGS
+
+		gen MoB_PGS = MoB0*PGS
+		gen MoBnew_PGS = MoBnew0*PGS
+
+		gen MoB_PGS_treat = MoB0*PGS*treat
+		gen MoBnew_PGS_treat = MoBnew0*PGS*treat
+	}
+	
+	* create the interaction terms between PGS and the controls
+	foreach control of varlist male YoB92 c_PC1-c_PC10{
+		gen PGSx`control' = `control'*PGS
+		gen treatx`control' = `control'*treat
+	}
+
+	*------ Permutation test for EA
+	cd ${dirfigures}
+	capture rm permutation.dta
+
+	global controlsX       treat_MoB MoB_PGS MoB_PGS_treat MoB male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92
+
+local pgs 23me_ukb
+	* true regressions
+	reg ea i.treat PGS treat#c.PGS $controlsX , cluster(MoB), if window3mth == 1
+	local beta_x  = _b[1.treat#c.PGS]
+	local tstat_x = _b[1.treat#c.PGS]/_se[1.treat#c.PGS]
+	di `beta_x'
+	di `tstat_x'
+
+	* permutations
+	local iter 1000
+	permute PGS treat coef=_b[1.treat#c.PGS] se=_se[1.treat#c.PGS], saving(permutation) reps(`iter'): ///
+	reg ea i.treat PGS treat#c.PGS $controlsX , cluster(MoB), if window3mth == 1
+
+
+	*--Plot the histogram
+	preserve 
+		use permutation.dta, replace
+
+		 _pctile coef, nq(1000)
+		local qin5 = r(r50)
+		local qin95 = r(r950)
+		local qin25 = r(r25)
+		local qin975 = r(r975)
+		display "`qin5'"
+		display "the median is " r(r500)
+
+		hist coef, scheme(plotplainblind) xtitle("Coefficient interaction term") legend(off) fc(none) lc(blue) xline(`qin5' `qin95' `qin25' `qin975', lp(dash)) xline(`beta_x', lc(black) )
+
+		graph export "${dirfigures}/permutation_coef_`pgs'.png", replace
+
+
+
+		gen tstat = coef/se
+		 _pctile tstat, nq(1000)
+		local qin5 = r(r50)
+		local qin95 = r(r950)
+		local qin25 = r(r25)
+		local qin975 = r(r975)
+		display "`qin5'"
+
+		hist tstat, scheme(plotplainblind) xtitle("T-statistic interaction term") legend(off) fc(none) lc(blue) xline(`qin5' `qin95' `qin25' `qin975', lp(dash)) xline(`tstat_x', lc(black) )
+
+		graph export "${dirfigures}/permutation_tstat_`pgs'.png", replace
+	restore
+}
+
+*--
+} // end if permutation
 
 
 
@@ -1363,3 +1845,7 @@ preserve
 
 restore
 
+
+
+hist coef, addplot(pci 0 0.16 4 0.16) xtitle("Coefficient interaction term") legend(off)
+hist tstat, addplot(pci 0 2 0.4 2) xtitle("t-statistic interaction term") legend(off)
