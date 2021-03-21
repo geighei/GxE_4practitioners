@@ -10,11 +10,21 @@ set matsize 11000
 set scheme plotplainblind
 
 
-* SET YOUR DIRECTORY
-*global dirdropbox  "/Users/`c(username)'/Dropbox/GEIGHEI/projects/GxE_4practitioners"
-global dirdropbox  "/mnt/data/Dropbox/GEIGHEI/projects/GxE_4practitioners" //for pietro's work computer
+/* SET YOUR DIRECTORY
+global dirdropbox  "/Users/`c(username)'/Dropbox/GEIGHEI/projects/GxE_4practitioners"
+global dirdropbox  "/mnt/data/Dropbox/GEIGHEI/projects/GxE_4practitioners"              //for pietro's work computer
+*/
 
 cd ${dirdropbox}
+
+
+
+
+
+
+
+
+
 
 *SET NUMBER OF REPLICATIONS
 local repl = 1000
@@ -76,9 +86,9 @@ mat siglr   = J(`rows',`repl',0)
 mat power   = J(`rows',1,0)
 
 forvalues kSample = 1/`ss' {
-	di "Looping over kSample `kSample'"
+	di "Looping over kSample `kSample' of `ss'"
     forvalues jGrid = 1/`betas' {
-		di "Looping over jGrid `jGrid'"
+		di "Looping over jGrid `jGrid' of `betas'"
 		scalar nsig = 0
 		forvalues iRepl = 1/`repl' {
 			*di "Looping over iRepl `iRepl'"
@@ -158,7 +168,25 @@ twoway (line overall_power1power1 overall_power1beta) ///
 }
 
 
-/* AD HOC FOR THE PAPER */
+
+*
+*
+*
+*
+*
+*
+*
+*    /* AD HOC FOR THE PRACTICIONERS PAPER */
+*
+*
+*
+*
+*
+*
+*
+
+
+
 if `ss'==5 {
 twoway (line overall_power1power1 overall_power1beta) ///
        (line overall_power2power2 overall_power2beta) ///

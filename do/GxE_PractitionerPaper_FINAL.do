@@ -1,7 +1,12 @@
 ***************************************************************************
 ***** GxE of August vs. September births - ALSPAC. 
-***** Stephanie von Hinke and Pietro Biroli, Apr 2020
+***** Stephanie von Hinke and Pietro Biroli, March 2021
 ***************************************************************************
+
+/*
+ssc install ivreghdfe
+*/
+
 set more off
 clear all
 capture log close
@@ -31,12 +36,14 @@ log using "${dirdropbox}/projects/GxE_4practitioners/logfiles/PractictionersPape
 
 ** SKIP Patterns (set to zero if you want to skip that section)
 global dataclean      = 1
-global figures        = 1
-	global figuresGxE = 0
-	global figuresRDD = 0
-global regs           = 1
-global permutation    = 1
-
+global analysis       = 1
+	global IDstrategy     = 1
+	global powercalc      = 0    // this takes a while
+	global rGE            = 1
+	global predictive     = 1
+	global funcform       = 1
+	global regs           = 1
+	global perm           = 0    // this takes a while
 
 *---------------------------------------------------------------------------------*
 * CLEAN THE DATA
@@ -55,55 +62,6 @@ foreach i in 3 4 5 6 7 8 9 10 11 12 {
 compress
 save 	"${dirdata}/Child/ALSPAC_pc_10_CHILDREN.dta", replace
 
-
-* Checking scores - children
-insheet using "${dirdropbox}/PGS/ALSPAC/EA/PGS_EA_alspac_ldpred_prior1_ukb_based_children.csv", clear
-rename 	fid id_child 
-rename 	scoresum pgs_ukb
-tempfile temp1
-save 	`temp1', replace
-insheet using "${dirdropbox}/PGS/ALSPAC/EA/PGS_EA_alspac_ldpred_prior1_23me_based_children.csv", clear
-rename 	fid id_child 
-rename 	scoresum pgs_23me
-tempfile temp2
-save 	`temp2', replace
-import delimited "${dirdropbox}/PGS/ALSPAC/EA/PGS_EA_alspac_ldpred_prior1_23me_ukb_based_children.profile", delimiter(space, collapse) varnames(1) clear
-rename 	fid id_child 
-rename 	scoresum pgs_23me_ukb
-merge 	1:1 id_child using `temp1'
-drop 	_m
-merge 	1:1 id_child using `temp2'
-drop 	_m
-merge 	1:1 id_child using "${dirdata}/Child/PGS_children_alspac_plink_EA.dta"
-drop 	_merge
-foreach i in pgs_23me_ukb pgs_ukb pgs_23me pgs_child_EA {
-	sum 	`i'
-	replace `i' = (`i'-r(mean))/r(sd)
-}
-replace pgs_23me = pgs_23me*-1
-corr pgs_child_EA pgs_ukb pgs_23me pgs_23me_ukb 
-
-* Checking scores - mothers
-insheet using "${dirdropbox}/PGS/ALSPAC/EA/PGS_EA_alspac_ldpred_prior1_ukb_based_mothers.csv", clear
-rename 	fid id_child 
-rename 	scoresum pgs_ukb
-tempfile temp1
-save `temp1', replace
-insheet using "${dirdropbox}/PGS/ALSPAC/EA/PGS_EA_alspac_ldpred_prior1_23me_based_mothers.csv", clear
-rename 	fid id_child 
-rename 	scoresum pgs_23me
-tempfile temp2
-save `temp2', replace
-import delimited "${dirdropbox}/PGS/ALSPAC/EA/PGS_EA_alspac_ldpred_prior1_23me_ukb_based_mothers.profile", delimiter(space, collapse) varnames(1)clear
-rename 	fid id_child 
-rename 	scoresum pgs_23me_ukb
-merge 1:1 id_child using `temp1'
-drop _m
-merge 1:1 id_child using `temp2'
-drop _m
-replace pgs_23me = pgs_23me*-1
-corr pgs_ukb pgs_23me pgs_23me_ukb 
-corr pgs*
 
 *** Saving new PGSs (based on 23andme and UKB) into Stata format
 foreach i in children mothers {
@@ -130,6 +88,16 @@ foreach j in ukb 23me 23me_ukb {
 	drop 	_merge
 }
 
+* Merge the plink-based score
+merge 	1:1 cidB2492 using"${dirdata}/Child/PGS_children_alspac_plink_EA.dta" 
+tab qlet birth_order, miss
+drop birth_order //keep qlet, the original one
+drop 	if _m<3
+drop 	_merge
+sum 	pgs_child_EA
+gen 	pgs_children_plink = (pgs_child_EA -r(mean))/r(sd)
+drop 	pgs_child_EA
+
 * Merge with mother's PGS (UKB and 23me) and PCs
 foreach j in ukb 23me 23me_ukb {
 	gen 	tmp = id_child
@@ -150,7 +118,8 @@ forval i=1(1)10 {
 drop 	_merge 
 rename qlet birth_order
 
-* Multiply 23 and me PGSs by -1
+* Multiply 23 and me PGSs by -1 (they are reverse-coded)
+pwcorr pgs*
 replace pgs_children_23me = pgs_children_23me * -1
 replace pgs_mothers_23me  = pgs_mothers_23me  * -1
 
@@ -229,291 +198,16 @@ label 	var IQ "Wechsler Intelligence Scale for Children (IQ, age 8)"
 
 *   August vs. September births
 gen 	MoBnew = MoB
-recode 	MoBnew (9=1) (10=2) (11=3) (12=4) (1=5) (2=6) (3=7) (4=8) (5=9) (6=10) (7=11) (8=12)
-label 	def MoBnew 1 "Sep" 2 "Oct" 3 "Nov" 4 "Dec" 5 "Jan" 6 "Feb" 7 "Mar" 8 "Apr" 9 "May" 10 "Jun" 11 "Jul" 12 "Aug" 
+recode 	MoBnew (9=1) (10=2) (11=3) (12=4) (1=5) (2=6) (3=-5) (4=-4) (5=-3) (6=-2) (7=-1) (8=-0)
+label 	def MoBnew 1 "Sep" 2 "Oct" 3 "Nov" 4 "Dec" 5 "Jan" 6 "Feb" -5 "Mar" -4 "Apr" -3 "May" -2 "Jun" -1 "Jul" 0 "Aug" 
 label 	val MoBnew MoBnew
 
 * "Treated": born in the 6 months after September
-gen treat = (MoBnew<=6) if MoBnew<.
+gen treat = (MoBnew>0) if MoBnew<.
 label define treat 0 "Born before Sept" 1 "Born after Sept"
 label values treat treat
 
-***************************************************************************
-keep 	cidB2492 birth_order male ea ks1 ks2 ks3 ks4 IQ YMoB YoB YoB91 YoB92 YoB93 MoB MoBnew pgs_children_ukb pgs_children_23me pgs_children_23me_ukb pgs_mothers_ukb pgs_mothers_23me pgs_mothers_23me_ukb c_PC* m_PC* treat* 
-order 	cidB2492 birth_order MoB MoBnew treat YoB YoB91 YoB92 YoB93 YMoB male ea ks* IQ pgs_* c_PC* m_PC* 
-
-* Standardize to have mean 0 and standard deviation 1
-foreach i in pgs_children_ukb pgs_children_23me pgs_children_23me_ukb pgs_mothers_ukb pgs_mothers_23me pgs_mothers_23me_ukb {
-	qui sum `i'
-	replace `i' = (`i'-r(mean))/(r(sd))
-	gen high`i' = (`i'>0) if `i'<.
-	tab high`i'
-}
-
-* Use the PGS with the higher predictive power for EA
-foreach i in ea ks1 ks2 ks3 ks4 {
-	foreach j in ukb 23me 23me_ukb {
-		qui eststo `i'_`j': reg `i' pgs_children_`j' c_PC*, robust
-	}
-}
-esttab ea_ukb ea_23me ea_23me_ukb, b se keep(pgs_children_*) stats(r2 N)
-esttab ks1_ukb ks1_23me ks1_23me_ukb, b se keep(pgs_children_*) stats(r2 N)
-esttab ks2_ukb ks2_23me ks2_23me_ukb, b se keep(pgs_children_*) stats(r2 N)
-esttab ks3_ukb ks3_23me ks3_23me_ukb, b se keep(pgs_children_*) stats(r2 N)
-esttab ks4_ukb ks4_23me ks4_23me_ukb, b se keep(pgs_children_*) stats(r2 N)
-est drop _all
-
-* Use meta-analysed PGS 
-gen PGS = pgs_children_23me_ukb
-rename highpgs_children_23me_ukb highPGS
-
-* create all of the demeaned interactions
-gen treat_PGS = treat*PGS
-gen treat_highPGS = treat*highPGS
-
-quietly sum MoB
-gen MoB0 = MoB-r(mean)
-quietly sum MoBnew
-gen MoBnew0 = MoBnew-r(mean)
-
-gen treat_MoB = treat*MoB0
-gen treat_MoBnew = treat*MoBnew0
-
-gen MoB_PGS = MoB0*PGS
-gen MoBnew_PGS = MoBnew0*PGS
-
-gen MoB_PGS_treat = MoB0*PGS*treat
-gen MoBnew_PGS_treat = MoBnew0*PGS*treat
-
-* sample selection based on window of n-months from the cutoff
-forvalues width=2/5{
-	gen window`width'mth = (MoBnew <=`width' | MoBnew>(12-`width')) if MoBnew<.
-}
-
-save "${dirdata}/Data_Set/cleanALSPAC4application.dta", replace
-} // end if dataclean
-
-*---------------------------------------------------------------------------------*
-* FIGURES
-*---------------------------------------------------------------------------------*
-if ${figures}==1{ // creates some cool figures
-
-***************************************************************************
-if ${figuresRDD}==1{ // RDD-style figures
-
-use "${dirdata}/Data_Set/cleanALSPAC4application.dta", clear
-set scheme plotplainblind
-
-
-foreach var of varlist ea ks1 ks2 ks3 ks4 {
-	gen `var'hiPGS = `var'* highPGS
-	gen `var'loPGS = `var'* (1-highPGS)
-}
-
-* Collapse the data
-collapse (mean)  ea* ks1* ks2* ks3* ks4* ///
-	 (sd)    sdea=ea sdks1=ks1 sdks2=ks2 sdks3=ks3 sdks4=ks4 ///
-	 (sd)    sdeahiPGS=eahiPGS sdks1hiPGS=ks1hiPGS sdks2hiPGS=ks2hiPGS sdks3hiPGS=ks3hiPGS sdks4hiPGS=ks4hiPGS ///
-	 (sd)    sdealoPGS=ealoPGS sdks1loPGS=ks1loPGS sdks2loPGS=ks2loPGS sdks3loPGS=ks3loPGS sdks4loPGS=ks4loPGS ///
-	 (count) nea=ea nks1=ks1 nks2=ks2 nks3=ks3 nks4=ks4 ///
-	 (count) neahiPGS=eahiPGS nks1hiPGS=ks1hiPGS nks2hiPGS=ks2hiPGS nks3hiPGS=ks3hiPGS nks4hiPGS=ks4hiPGS ///
-	 (count) nealoPGS=ealoPGS nks1loPGS=ks1loPGS nks2loPGS=ks2loPGS nks3loPGS=ks3loPGS nks4loPGS=ks4loPGS ///
-		 , by(MoB MoBnew)
-
-foreach var of varlist ea* ks1* ks2* ks3* ks4* {
-	generate hi`var'  = `var' + invttail(n`var'-1,0.025)*(sd`var' / sqrt(n`var'))
-	generate low`var' = `var' - invttail(n`var'-1,0.025)*(sd`var' / sqrt(n`var'))
-}
-
-
-* Combined
-twoway  (line ea  MoB, sort) ///
-	(line ks1 MoB, sort) ///
-	(line ks2 MoB, sort) ///
-	(line ks3 MoB, sort) ///
-	(line ks4 MoB, sort) ///
-	(rcap hiea lowea MoB, color(gs13)) ///
-	(rcap hiks1 lowks1 MoB, color(gs13)) ///
-	(rcap hiks2 lowks2 MoB, color(gs13)) ///
-	(rcap hiks3 lowks3 MoB, color(gs13)) ///
-	(rcap hiks4 lowks4 MoB, color(gs13)) ///
-	, xlabel(1(1)12, valuelabel) ///
-	ytitle("Standardised score") xtitle("Month of birth") ///
-	legend(on order(1 "Age 4" 2 "Age 7" 3 "Age 11" 4 "Age 14" 5 "Age 16") pos(6) row(1)) ///
-	ylabel(-.5(.25).5) yscale(range(-0.5 0.5)) yline(0) ///
-	title("Test scores by month of birth") //scheme(s1mono)
-graph export "${dirfigures}/MoB.png", replace
-
-
-*--- One by one
-*create some locals for the titles inside the loop
-local yea      = "Entry assessment"
-local yks1     = "Key Stage 1"
-local yks2     = "Key Stage 2"
-local yks3     = "Key Stage 3"
-local yks4     = "Key Stage 4"
-local titleea  = "Standardised score on Entry Assessment test (age 4)"
-local titleks1 = "Standardised score on Key Stage 1 test (age 7)"
-local titleks2 = "Standardised score on Key Stage 2 test (age 11)"
-local titleks3 = "Standardised score on Key Stage 3 test (age 14)"
-local titleks4 = "Standardised score on Key Stage 4 test (age 16)"
-
-
-foreach test in ea ks1 ks2 ks3 ks4 {
-* everyone
-twoway (line `test' MoB, sort) ///
-	   (rcap hi`test' low`test' MoB) ///
-	, xlabel(1(1)12, valuelabel) ///
-	ytitle("`y`test''") xtitle("Month of birth") ///
-	ylabel(-.5(.25).5) yscale(range(-0.5 0.5)) yline(0) ///
-	title("`title`test''") legend(on order(1 "Mean" 2 "95% CI") pos(6) row(1)) //scheme(s1mono)
-graph export "${dirfigures}/MoB_`test'.png", replace
-
-* High PGS vs low PGS
-twoway (line `test'hiPGS MoB, sort)            (line `test'loPGS MoB, sort) ///
-	   (rcap hi`test'hiPGS low`test'hiPGS MoB) (rcap hi`test'loPGS low`test'loPGS MoB) ///
-	, xlabel(1(1)12, valuelabel) ///
-	ytitle("`y`test''") xtitle("Month of birth") ///
-	ylabel(-.5(.25).5) yscale(range(-0.5 0.5)) yline(0) ///
-	title("`title`test''") legend(on order(1 "High PGS" 2 "Low PGS" 3 "95% CI") pos(6) row(1)) //scheme(s1mono)
-graph export "${dirfigures}/MoB_`test'_byPGS.png", replace
-}
-
-} // end if RDD-style figures
-
-
-
-***************************************************************************
-if ${figuresGxE}==1{ // GxE figures: list of figures that *any* GxE paper should have
-
-use "${dirdata}/Data_Set/cleanALSPAC4application.dta", clear
-keep if window3mth == 1 // keep only 3 months of each side of the cutoff
-set scheme plotplainblind // s1rcolor plottig plotplain uncluttered lean2 economist
-
-
-
-***********         (1)         ***********
-*------- Treatment and outcome: descriptives assuming dichotomous treatment ----------------------------------------------------*
-foreach outcome in ea ks1 ks2 ks3 ks4 {
-	local outcomelabel: variable label `outcome'
-	local lab0 : label treat 0
-	local lab1 : label treat 1
-	
-	* Kdensity plot of treatment over outcome
-	twoway ///
-		(kdensity `outcome' if treat ==0) ///, ci
-		(kdensity `outcome' if treat ==1) ///, ci
-		, legend(label(1 "`lab0'") label(2 "`lab1'") position(6) row(1)) ///
-		  xtitle("`outcomelabel'") ytitle("Density")
-
-		graph export "${dirfigures}/kdens_treat_`outcome'.png", replace
-}
-
-
-***********         (2)         ***********
-*------- PGS and outcome: descriptives ----------------------------------------------------*
-foreach outcome in ea ks1 ks2 ks3 ks4 {
-	* Bin-scatter plot of PGS over outcome + density of PGS
-	local outcomelabel: variable label `outcome'
-	capture drop 	PGS_bin meanP meanD tag
-	xtile 	PGS_bin = PGS, nquantiles(200)
-	bys 	PGS_bin: egen meanP = mean(PGS)
-	bys 	PGS_bin: egen meanD = mean(`outcome')
-	egen 	tag = tag(meanP meanD)
-
-	twoway  ///
-		(scatter meanD PGS if tag==1) ///
-		(kdensity PGS, yaxis(2)) ///
-		(lpolyci `outcome' PGS) ///
-		if PGS>-3 & PGS<3 , /// XXXX CUTTING OFF THE TAILS!
-		legend(off) ///
-		xtitle("PGS") ytitle("`outcomelabel'") ytitle("Density", axis(2)) scheme(plotplainblind)
-
-	graph export "${dirfigures}/density_PGS_`outcome'.png", replace
-	drop 	PGS_bin meanP meanD tag
-}
-
-
-
-***********         (3)         ***********
-*------- Treatment and PGS: descriptives assuming dichotomous treatment ----------------------------------------------------*
-label var pgs_mothers_23me_ukb "Mother PGS for educational attainment"
-local PGSlabel: variable label PGS
-local PGSlabelmother: variable label pgs_mothers_23me_ukb
-
-* Kdensity plot of treatment over outcome
-local lab0 : label treat 0
-local lab1 : label treat 1
-
-* Children's PGS
-twoway ///
-    (kdensity PGS if treat ==0) ///, ci
-	(kdensity PGS if treat ==1) ///, ci
-	, legend(label(1 "`lab0'") label(2 "`lab1'") row(1) position(6)) ///
-	  xtitle("`PGSlabel'") ytitle("Density")
-
-	graph export "${dirfigures}/kdens_treat_PGS.png", replace
-
-* Mothers' PGS
-twoway ///
-    (kdensity pgs_mothers_23me_ukb if treat ==0) ///, ci
-	(kdensity pgs_mothers_23me_ukb if treat ==1) ///, ci
-	, legend(label(1 "`lab0'") label(2 "`lab1'") row(1) position(6)) ///
-	  xtitle("`PGSlabelmother'") ytitle("Density")
-
-	graph export "${dirfigures}/kdens_treat_PGS_mothers.png", replace
-
-
-
-***********         (4)         ***********
-*------- Treatment and other X's: ----------------------------------------------------*
-use 	"${dirdata}/Data_Set/Rietveld_12Sep18.dta", clear
-
-* Merge in children's PGSs (UKB and 23me)
-egen 	id_child = concat(cidB2492 qlet)
-merge 	1:1 id_child using "${dirdata}/Child/PGS_children_23me_ukb.dta"
-keep 	if _m==3
-drop 	_m
-
-* Merge with mother's PGS (UKB and 23me) and PCs
-gen 	tmp = id_child
-replace id_child = subinstr(id_child,"A","M",1)
-merge 	1:1 id_child using "${dirdata}/Child/PGS_mothers_23me_ukb.dta"
-drop 	if _m==2 	// drop those only in using data
-replace id_child = tmp
-drop 	_merge tmp
-rename qlet birth_order
-
-* keep selected variables measured around birth of cohort member
-keep 	cidB2492 birth_order kz021 kz030 ka498 a200 a525 b023 b352a b354a c645a c666a c686a c706a c755 pgs_children_23me_ukb pgs_mothers_23me_ukb /*pgs_child_EA */
-
-* Month of birth
-gen 	MoB = ka498
-recode 	MoB (-9999=.)
-label 	def MoB 1 "Jan" 2 "Feb" 3 "Mar" 4 "Apr" 5 "May" 6 "Jun" 7 "Jul" 8 "Aug" 9 "Sep" 10 "Oct" 11 "Nov" 12 "Dec"
-label 	val MoB MoB
-label 	var MoB "Month of birth"
-drop 	ka498
-
-* Gender
-gen 	male = kz021
-recode 	male (2=0) (-9999 -1 = .)
-label 	var male "Male"
-drop 	kz021
-
-*   August vs. September births
-gen 	MoBnew = MoB
-recode 	MoBnew (9=1) (10=2) (11=3) (12=4) (1=5) (2=6) (3=7) (4=8) (5=9) (6=10) (7=11) (8=12)
-label 	def MoBnew 1 "Sep" 2 "Oct" 3 "Nov" 4 "Dec" 5 "Jan" 6 "Feb" 7 "Mar" 8 "Apr" 9 "May" 10 "Jun" 11 "Jul" 12 "Aug" 
-label 	val MoBnew MoBnew
-
-* "Treated": born in the 6 months after September
-gen treat = (MoBnew<=6) if MoBnew<.
-label define treat 0 "Born before Sept" 1 "Born after Sept"
-label values treat treat
-
-
-***************************************************************************
+**---- include and clean some additional baseline characteristics (mostly for table on baseline balance)---#
 * Birth weight
 recode 	kz030 (-9999 -10 -1 = .)
 rename 	kz030 bw
@@ -581,26 +275,226 @@ label 	var SC5 "Mother proportion Social Class IV"
 label 	var SC6 "Mother proportion Social Class V"
 drop 	socclass
 
+
 ***************************************************************************
-rename 	pgs_children_23me_ukb PGS
-label var PGS "Child PGS for Educational Attainment"
-rename 	pgs_mothers_23me_ukb PGS_mothers
-label var PGS_mothers "Mother PGS for Educational Attainment"
+keep 	cidB2492 birth_order male ea ks1 ks2 ks3 ks4 IQ YMoB YoB YoB91 YoB92 YoB93 MoB MoBnew pgs_children_plink pgs_children_ukb pgs_children_23me pgs_children_23me_ukb pgs_mothers_ukb pgs_mothers_23me pgs_mothers_23me_ukb c_PC* m_PC* treat* mumagepreg smokepreg m_anxiety m_depression married mumed2 mumed3 mumed4 mumed5 daded2 daded3 daded4 daded5 SC2 SC3 SC4 SC5 SC6 bw 
+
+order 	cidB2492 birth_order MoB MoBnew treat YoB YoB91 YoB92 YoB93 YMoB male ea ks* IQ pgs_* c_PC* m_PC* 
 
 * Standardize to have mean 0 and standard deviation 1
-foreach i in PGS PGS_mothers {
-	qui sum `i'
-	replace `i' = (`i'-r(mean))/(r(sd))
+foreach pgs of varlist pgs_* {
+	qui sum `pgs'
+	replace `pgs' = (`pgs'-r(mean))/(r(sd))
+	gen high`pgs' = (`pgs'>0) if `pgs'<.
+	tab high`pgs'
 }
+
+* Use the PGS with the higher predictive power
+/* The meta-analysed score 23me_ukb is the one that always has the highest predictive power */
+foreach outcome in ea ks1 ks2 ks3 ks4 {
+	foreach method in plink ukb 23me 23me_ukb {
+		label var pgs_children_`method' "PGS `method'"
+		qui eststo `outcome'_`method': reg `outcome' pgs_children_`method' male c_PC*, robust
+	} //end foreach method
+
+esttab `outcome'_plink `outcome'_ukb `outcome'_23me `outcome'_23me_ukb, b se keep(pgs_children_*) stats(r2 N)
+
+esttab 	`outcome'_plink `outcome'_ukb `outcome'_23me `outcome'_23me_ukb using "${dirtables}/PredictivePower_`outcome'.tex", replace ///
+	frag bookt b(3) se(3) keep(pgs*) star(* 0.10 ** 0.05 *** 0.01) ///
+	nomtitles stats(r2 N, label("R2" "Observations") fmt(3 0)) nonotes ///
+	label
+} // end foreach outcome
+
+est drop _all
+
+
+* Use meta-analysed PGS 
+gen PGS     = pgs_children_23me_ukb
+label var PGS "Child PGS for Educational Attainment"
+gen highPGS = highpgs_children_23me_ukb 
+
+gen PGS_mothers = pgs_mothers_23me_ukb 
+label var PGS_mothers "Mother PGS for Educational Attainment"
+
+
+* create all of the demeaned interactions
+gen treat_PGS = treat*PGS
+gen treat_highPGS = treat*highPGS
+
+quietly sum MoB
+gen MoB0 = MoB-r(mean)
+quietly sum MoBnew
+gen MoBnew0 = MoBnew-r(mean)
+
+gen treat_MoB = treat*MoB0
+gen treat_MoBnew = treat*MoBnew0
+
+gen MoB_PGS = MoB0*PGS
+gen MoBnew_PGS = MoBnew0*PGS
+
+gen MoB_PGS_treat = MoB0*PGS*treat
+gen MoBnew_PGS_treat = MoBnew0*PGS*treat
 
 * sample selection based on window of n-months from the cutoff
 forvalues width=2/5{
-	gen window`width'mth = (MoBnew <=`width' | MoBnew>(12-`width')) if MoBnew<.
+	gen window`width'mth = (MoBnew <=`width' & MoBnew>(-`width')) if MoBnew<.
 }
+tab MoB window3mth
 
-keep if window3mth == 1 // keep only 3 months of each side of the cutoff
+save "${dirdata}/Data_Set/cleanALSPAC4application.dta", replace
+} // end if dataclean
+
+
+
+
+
+
+
+
+
+
+
+
+
+*---------------------------------------------------------------------------------*
+* DATA ANALYSIS
+*---------------------------------------------------------------------------------*
+if ${analysis}==1{ // produces all of the figures and tables used in the paper (section by section)
 
 ***************************************************************************
+if ${IDstrategy}==1{ // Check the validity of the identification strategy
+
+set scheme plotplainblind
+
+************* fig:MoB 
+*------- RDD style figure (specific to this application) ----------------------------------------------------*
+*** ---> checks if there are "jumps" on the outcome vars from August to Sept births (treat vs control)
+*** NOTE: all sample (not only 3 months)
+
+use "${dirdata}/Data_Set/cleanALSPAC4application.dta", clear
+
+foreach var of varlist ea ks1 ks2 ks3 ks4 {
+	gen `var'hiPGS = `var'* highPGS
+	gen `var'loPGS = `var'* (1-highPGS)
+}
+
+* Collapse the data
+preserve  //before collpasing
+
+collapse (mean)  ea* ks1* ks2* ks3* ks4* ///
+	 (sd)    sdea=ea sdks1=ks1 sdks2=ks2 sdks3=ks3 sdks4=ks4 ///
+	 (sd)    sdeahiPGS=eahiPGS sdks1hiPGS=ks1hiPGS sdks2hiPGS=ks2hiPGS sdks3hiPGS=ks3hiPGS sdks4hiPGS=ks4hiPGS ///
+	 (sd)    sdealoPGS=ealoPGS sdks1loPGS=ks1loPGS sdks2loPGS=ks2loPGS sdks3loPGS=ks3loPGS sdks4loPGS=ks4loPGS ///
+	 (count) nea=ea nks1=ks1 nks2=ks2 nks3=ks3 nks4=ks4 ///
+	 (count) neahiPGS=eahiPGS nks1hiPGS=ks1hiPGS nks2hiPGS=ks2hiPGS nks3hiPGS=ks3hiPGS nks4hiPGS=ks4hiPGS ///
+	 (count) nealoPGS=ealoPGS nks1loPGS=ks1loPGS nks2loPGS=ks2loPGS nks3loPGS=ks3loPGS nks4loPGS=ks4loPGS ///
+		 , by(MoB MoBnew)
+
+foreach var of varlist ea* ks1* ks2* ks3* ks4* {
+	generate hi`var'  = `var' + invttail(n`var'-1,0.025)*(sd`var' / sqrt(n`var'))
+	generate low`var' = `var' - invttail(n`var'-1,0.025)*(sd`var' / sqrt(n`var'))
+}
+
+
+* Combined
+twoway  (line ea  MoB, sort) ///
+	(line ks1 MoB, sort) ///
+	(line ks2 MoB, sort) ///
+	(line ks3 MoB, sort) ///
+	(line ks4 MoB, sort) ///
+	(rcap hiea lowea MoB, color(gs13)) ///
+	(rcap hiks1 lowks1 MoB, color(gs13)) ///
+	(rcap hiks2 lowks2 MoB, color(gs13)) ///
+	(rcap hiks3 lowks3 MoB, color(gs13)) ///
+	(rcap hiks4 lowks4 MoB, color(gs13)) ///
+	, xlabel(1(1)12, valuelabel) ///
+	ytitle("Standardised score") xtitle("Month of birth") ///
+	legend(on order(1 "Age 4" 2 "Age 7" 3 "Age 11" 4 "Age 14" 5 "Age 16") pos(6) row(1)) ///
+	ylabel(-.5(.25).5) yscale(range(-0.5 0.5)) yline(0) ///
+	title("Test scores by month of birth") //scheme(s1mono)
+graph export "${dirfigures}/MoB.png", replace
+
+
+/*--- One by one (these are not used in the paper)
+*create some locals for the titles inside the loop
+local yea      = "Entry assessment"
+local yks1     = "Key Stage 1"
+local yks2     = "Key Stage 2"
+local yks3     = "Key Stage 3"
+local yks4     = "Key Stage 4"
+local titleea  = "Standardised score on Entry Assessment test (age 4)"
+local titleks1 = "Standardised score on Key Stage 1 test (age 7)"
+local titleks2 = "Standardised score on Key Stage 2 test (age 11)"
+local titleks3 = "Standardised score on Key Stage 3 test (age 14)"
+local titleks4 = "Standardised score on Key Stage 4 test (age 16)"
+
+
+foreach test in ea ks1 ks2 ks3 ks4 {
+* everyone
+twoway (line `test' MoB, sort) ///
+	   (rcap hi`test' low`test' MoB) ///
+	, xlabel(1(1)12, valuelabel) ///
+	ytitle("`y`test''") xtitle("Month of birth") ///
+	ylabel(-.5(.25).5) yscale(range(-0.5 0.5)) yline(0) ///
+	title("`title`test''") legend(on order(1 "Mean" 2 "95% CI") pos(6) row(1)) //scheme(s1mono)
+graph export "${dirfigures}/MoB_`test'.png", replace
+
+* High PGS vs low PGS
+twoway (line `test'hiPGS MoB, sort)            (line `test'loPGS MoB, sort) ///
+	   (rcap hi`test'hiPGS low`test'hiPGS MoB) (rcap hi`test'loPGS low`test'loPGS MoB) ///
+	, xlabel(1(1)12, valuelabel) ///
+	ytitle("`y`test''") xtitle("Month of birth") ///
+	ylabel(-.5(.25).5) yscale(range(-0.5 0.5)) yline(0) ///
+	title("`title`test''") legend(on order(1 "High PGS" 2 "Low PGS" 3 "95% CI") pos(6) row(1)) //scheme(s1mono)
+graph export "${dirfigures}/MoB_`test'_byPGS.png", replace
+}
+
+*/
+
+restore //after collpasing
+
+
+
+
+
+
+************* fig:kdens_treat_ea 
+*------- Differences in the density of the outcome by treatment ----------------------------------------------------*
+*** ---> only 3 months on each side of the cutoff
+
+use "${dirdata}/Data_Set/cleanALSPAC4application.dta", clear
+keep if window3mth == 1 // keep only 3 months of each side of the cutoff
+
+foreach outcome in ea ks1 ks2 ks3 ks4 {
+	local outcomelabel: variable label `outcome'
+	local lab0 : label treat 0
+	local lab1 : label treat 1
+	
+	* Kdensity plot of treatment over outcome
+	twoway ///
+		(kdensity `outcome' if treat ==0) ///, ci
+		(kdensity `outcome' if treat ==1) ///, ci
+		, legend(label(1 "`lab0'") label(2 "`lab1'") position(6) row(1)) ///
+		  xtitle("`outcomelabel'") ytitle("Density")
+
+		graph export "${dirfigures}/kdens_treat_`outcome'.png", replace
+}
+
+
+
+
+
+
+
+
+
+************* tab:DescrByTreated
+*------- Balance of baseline characteristics by treat and control ----------------------------------------------------*
+*** ---> only 3 months on each side of the cutoff
+
+use "${dirdata}/Data_Set/cleanALSPAC4application.dta", clear
+keep if window3mth == 1 // keep only 3 months of each side of the cutoff
+
 local 	xvars "mumagepreg smokepreg m_anxiety m_depression married mumed2 mumed3 mumed4 mumed5 daded2 daded3 daded4 daded5 SC2 SC3 SC4 SC5 SC6 bw PGS PGS_mothers "
 
 qui estpost sum `xvars' if treat==1
@@ -616,14 +510,136 @@ esttab 	T1 T0 pval, replace ///
 esttab 	T1 T0 pval using "${dirtables}/DescrByTreated.tex", replace ///
 	nomtitle cells("count mean(fmt(3)) p(fmt(3))") label booktabs nonum collabels(none) f noobs wide nogaps
 
+} // end if IDstrategy
+
 ***************************************************************************
+if ${powercalc}==1{ // power calculations
+
+do ${dirdropbox}/projects/GxE_4practitioners/do/GxE_powerCalc.do
+
+} // end if powercalc
+
+***************************************************************************
+if ${rGE}==1{ // Checks if the PGS is correlated with the treatment (it should NOT)
 
 
-***********         (4)         ***********
-*------- PGSxTreat and outcome descriptives ----------------------------------------------------*
 use "${dirdata}/Data_Set/cleanALSPAC4application.dta", clear
 keep if window3mth == 1 // keep only 3 months of each side of the cutoff
-set scheme plotplainblind // s1rcolor plottig plotplain uncluttered lean2 economist
+
+local PGSlabel: variable label PGS
+local PGSlabelmother: variable label PGS_mothers
+
+* Kdensity plot of treatment over outcome
+local lab0 : label treat 0
+local lab1 : label treat 1
+
+
+************* fig:kdens_treat_PGS
+*------- Differences in the density of the PGS by treatment ----------------------------------------------------*
+* Children's PGS
+twoway ///
+    (kdensity PGS if treat ==0) ///, ci
+	(kdensity PGS if treat ==1) ///, ci
+	, legend(label(1 "`lab0'") label(2 "`lab1'") row(1) position(6)) ///
+	  xtitle("`PGSlabel'") ytitle("Density")
+
+	graph export "${dirfigures}/kdens_treat_PGS.png", replace
+
+************* fig:kdens_treat_PGS_mohter
+*------- Differences in the density of maternal PGS by treatment ----------------------------------------------------*
+* Mothers' PGS
+twoway ///
+    (kdensity PGS_mothers if treat ==0) ///, ci
+	(kdensity PGS_mothers if treat ==1) ///, ci
+	, legend(label(1 "`lab0'") label(2 "`lab1'") row(1) position(6)) ///
+	  xtitle("`PGSlabelmother'") ytitle("Density")
+
+	graph export "${dirfigures}/kdens_treat_PGS_mothers.png", replace
+
+
+	
+	
+	
+************* tab:corr_treat_PGS
+*------- Check if PGS predicts treatment using same regression as main ----------------------------------------------------*
+polychoric treat PGS
+polychoric treat PGS_mothers
+
+eststo rGE: reg treat PGS PGS_mother male YoB92 c_PC*, robust cluster(MoB), if window3mth == 1
+
+esttab rGE using "${dirtables}/corr_treat_PGS.tex", replace ///
+	frag bookt b(3) se(3) keep(PGS PGS_mothers) star(* 0.10 ** 0.05 *** 0.01) ///
+	nomtitles stats(r2 N, label("R2" "Observations") fmt(3 0)) nonotes ///
+	coeflabel(PGS "Child PGS" PGS_mothers "Mom PGS") 
+} // end if rGE
+
+
+
+if ${predictive}==1{ // Distribution and predictive power of the PGS
+use "${dirdata}/Data_Set/cleanALSPAC4application.dta", clear
+keep if window3mth == 1 // keep only 3 months of each side of the cutoff
+
+************* fig:density_PGS_ea
+*------- Predictive power of the PGS ----------------------------------------------------*
+** NOTE: trimming the tails to avoid weird non-linear fit
+
+foreach outcome in ea ks1 ks2 ks3 ks4 {
+	* Bin-scatter plot of PGS over outcome + density of PGS
+	local outcomelabel: variable label `outcome'
+	capture drop 	PGS_bin meanP meanD tag
+	xtile 	PGS_bin = PGS, nquantiles(200)
+	bys 	PGS_bin: egen meanP = mean(PGS)
+	bys 	PGS_bin: egen meanD = mean(`outcome')
+	egen 	tag = tag(meanP meanD)
+
+	twoway  ///
+		(scatter meanD PGS if tag==1) ///
+		(kdensity PGS, yaxis(2)) ///
+		(lpolyci `outcome' PGS) ///
+		if PGS>-3 & PGS<3 , /// XXXX CUTTING OFF THE TAILS!
+		legend(off) ///
+		xtitle("PGS") ytitle("`outcomelabel'") ytitle("Density", axis(2)) scheme(plotplainblind)
+
+	graph export "${dirfigures}/density_PGS_`outcome'.png", replace
+	drop 	PGS_bin meanP meanD tag
+} // end of foreach outcome
+
+
+
+
+
+
+************* tab:PredictivePower
+*------- Predictive power of the PGS in an OLS regression --------------------------------------*
+* repeated here from the cleandata section
+/* The meta-analysed score 23me_ukb is the one that always has the highest predictive power */
+foreach outcome in ea ks1 ks2 ks3 ks4 {
+	foreach method in plink ukb 23me 23me_ukb {
+		label var pgs_children_`method' "PGS `method'"
+		qui eststo `outcome'_`method': reg `outcome' pgs_children_`method' male c_PC*, robust
+	} //end foreach method
+
+esttab `outcome'_plink `outcome'_ukb `outcome'_23me `outcome'_23me_ukb, b se keep(pgs_children_*) stats(r2 N)
+
+esttab 	`outcome'_plink `outcome'_ukb `outcome'_23me `outcome'_23me_ukb using "${dirtables}/PredictivePower_`outcome'.tex", replace ///
+	frag bookt b(3) se(3) keep(pgs*) star(* 0.10 ** 0.05 *** 0.01) ///
+	nomtitles stats(r2 N, label("R2" "Observations") fmt(3 0)) nonotes ///
+	label
+} // end foreach outcome
+
+est drop _all
+} // end if predictive
+
+
+***************************************************************************
+if ${funcform}==1{ // Check the function form for the GxE interaction
+
+use "${dirdata}/Data_Set/cleanALSPAC4application.dta", clear
+keep if window3mth == 1 // keep only 3 months of each side of the cutoff
+
+************* fig:PGSxTreat_ea
+*------- Plot to the data to visualize the realationship between G and the outcome for treat and control -----------------------------*
+** NOTE: trimming the tails to avoid weird non-linear fit
 
 foreach outcome in ea ks1 ks2 ks3 ks4 {
 	local outcomelabel: variable label `outcome'
@@ -662,168 +678,103 @@ foreach outcome in ea ks1 ks2 ks3 ks4 {
 	drop 	PGS_bin* meanP* meanD* tag*
 } // end foreach outcome
 
-} // end if GxE figures
-
-} // end if figures
+} // end if funcform
 
 
-*---------------------------------------------------------------------------------*
-* REGRESSIONS
-*---------------------------------------------------------------------------------*
+***************************************************************************
 if ${regs}==1{ // runs the regressions
 
-** Comparing predictive power from different PGSs
-est drop _all
-foreach pgs in plink ukb 23me 23me_ukb {
-	use "${dirdata}/Data_Set/cleanALSPAC4application.dta", clear
-	keep if window3mth == 1
+use "${dirdata}/Data_Set/cleanALSPAC4application.dta", clear
+keep if window3mth == 1
 
-	if "`pgs'"=="plink" {
-		* To replicate the earlier results using PLINK-based PGS:
-		drop if cidB==.
-		drop 	PGS 
-		merge 	1:1 cidB2492 birth_order using "${dirdata}/Child/PGS_children_alspac_plink_EA.dta"
-		drop 	if _m<3
-		sum 	pgs_child_EA
-		gen 	PGS = (pgs_child_EA -r(mean))/r(sd)
-		eststo: reg ks2 PGS c_PC*, robust
-	}
-	if "`pgs'"=="ukb" {
-		drop 	PGS 
-		gen 	PGS = pgs_children_ukb
-		eststo: reg ks2 PGS c_PC*, robust
-	}
-	if "`pgs'"=="23me" {
-		* Using LDpred-based PGS with 23&me sumstats:
-		drop 	PGS 
-		gen 	PGS = pgs_children_23me
-		eststo: reg ks2 PGS c_PC*, robust
-	}
-	else if "`pgs'"=="23me_ukb" {
-		* Using LDpred-based PGS with 23&me sumstats:
-		drop 	PGS 
-		gen 	PGS = pgs_children_23me_ukb
-		eststo: reg ks2 PGS c_PC*, robust
-	}
-}
-esttab 	, b se keep(PGS) star(* 0.10 ** 0.05 *** 0.01) stats(r2 N, label("R2" "Observations") fmt(3 0)) nonotes 
-
-esttab 	using "${dirtables}/PredictivePower.tex", replace ///
-	frag bookt b(3) se(3) keep(PGS) star(* 0.10 ** 0.05 *** 0.01) ///
-	mgroups("PLINK" "UKB" "23\&me", pattern(1 1 1) span ///
-	prefix(\multicolumn{@span}{c}{) suffix(}) erepeat(\cmidrule(lr){@span})) ///
-	nomtitles stats(r2 N, label("R2" "Observations") fmt(3 0)) nonotes ///
-	coeflabel(PGS "PGS") 
-
-foreach pgs in plink ukb 23me 23me_ukb {
-	use "${dirdata}/Data_Set/cleanALSPAC4application.dta", clear
-	keep if window3mth == 1
-
-	if "`pgs'"=="plink" {
-		* To replicate the earlier results using PLINK-based PGS:
-		drop if cidB==.
-		drop PGS treat_PGS MoB_PGS MoBnew_PGS MoB_PGS_treat MoBnew_PGS_treat 
-
-		merge 	1:1 cidB2492 birth_order using "${dirdata}/Child/PGS_children_alspac_plink_EA.dta"
-		drop 	if _m<3
-		drop 	_merge
-		sum 	pgs_child_EA
-		gen 	PGS = (pgs_child_EA -r(mean))/r(sd)
-
-		* create all of the demeaned interactions
-		gen treat_PGS = treat*PGS
-
-		gen MoB_PGS = MoB0*PGS
-		gen MoBnew_PGS = MoBnew0*PGS
-
-		gen MoB_PGS_treat = MoB0*PGS*treat
-		gen MoBnew_PGS_treat = MoBnew0*PGS*treat
-	}
-	if "`pgs'"=="ukb" {
-		* Using LDpred-based PGS with 23&me sumstats:
-		drop PGS treat_PGS MoB_PGS MoBnew_PGS MoB_PGS_treat MoBnew_PGS_treat 
-		gen PGS = pgs_children_ukb
-
-		* create all of the demeaned interactions
-		gen treat_PGS = treat*PGS
-
-		gen MoB_PGS = MoB0*PGS
-		gen MoBnew_PGS = MoBnew0*PGS
-
-		gen MoB_PGS_treat = MoB0*PGS*treat
-		gen MoBnew_PGS_treat = MoBnew0*PGS*treat
-	}
-	if "`pgs'"=="23me" {
-		* Using LDpred-based PGS with 23&me sumstats:
-		drop PGS treat_PGS MoB_PGS MoBnew_PGS MoB_PGS_treat MoBnew_PGS_treat 
-		gen PGS = pgs_children_23me
-
-		* create all of the demeaned interactions
-		gen treat_PGS = treat*PGS
-
-		gen MoB_PGS = MoB0*PGS
-		gen MoBnew_PGS = MoBnew0*PGS
-
-		gen MoB_PGS_treat = MoB0*PGS*treat
-		gen MoBnew_PGS_treat = MoBnew0*PGS*treat
-	}
-	else if "`pgs'"=="23me_ukb" {
-		* Using LDpred-based PGS with 23&me sumstats:
-		drop PGS treat_PGS MoB_PGS MoBnew_PGS MoB_PGS_treat MoBnew_PGS_treat 
-		gen PGS = pgs_children_23me_ukb
-
-		* create all of the demeaned interactions
-		gen treat_PGS = treat*PGS
-
-		gen MoB_PGS = MoB0*PGS
-		gen MoBnew_PGS = MoBnew0*PGS
-
-		gen MoB_PGS_treat = MoB0*PGS*treat
-		gen MoBnew_PGS_treat = MoBnew0*PGS*treat
-	}
-
-	* create the interaction terms between PGS and the controls
-	foreach control of varlist male YoB92 c_PC1-c_PC10{
-		gen PGSx`control' = `control'*PGS
-		gen treatx`control' = `control'*treat
-	}
+** Inputs: PGS, treat, and controls
+pwcorr PGS pgs_children*
+tab MoB treat
+global Xvars       MoBnew male YoB92 c_PC* // input: variables to control for in the regression
+global tokeep      treat PGS PGSxtreat treatxMoBnew PGSxMoBnew PGSxtreatxMoBnew  // variables to keep in the output
 
 
-	***************************************************************************
-	* Table with only entry assessment
-	qui eststo 	m3: reg ea  treat           treat_MoB MoB PGS                       male YoB92 c_PC*                                                    , robust cluster(MoB), if window3mth == 1
-	qui eststo 	m4: reg ea  treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if window3mth == 1
 
-	esttab 	m3 m4, b se keep(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) order(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) star(* 0.10 ** 0.05 *** 0.01) stats(r2 N, fmt(3 0))
+** This part could be automated
+*1----------- CREATE INTERACTION terms between PGS, treat, and the demeaned controls (Keller2014 and Lin2013)
+*GxE interaction
+qui sum PGS
+gen PGSxtreat = treat * (PGS-r(mean))
 
-	esttab 	m3 m4 using "${dirtables}/MoB_ea_`pgs'.tex", replace ///
-		frag bookt b(3) se(3) keep(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) ///
-		order(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) star(* 0.10 ** 0.05 *** 0.01) ///
+
+*G and E iteracted with controls
+global Xpgs        ""
+global Xtreat      ""
+
+foreach control of varlist $Xvars {
+	qui sum `control'
+	gen PGSx`control'   = PGS   * (`control'-r(mean))
+	gen treatx`control' = treat * (`control'-r(mean))
+	
+	//automatically populate the global list of interacted controls
+	global Xpgs   ${Xpgs}   PGSx`control'  
+	global Xtreat ${Xtreat} treatx`control'
+} //end foreach control
+
+*GxExControls ---> only one triple interaction, with the RDD running variable, to keep things simple
+qui sum MoBnew
+gen PGSxtreatxMoBnew = PGSxtreat * (MoBnew -r(mean))
+
+
+
+
+*2----------- REGRESSION ---------------------------*
+foreach outcome in ea ks1 ks2 ks3 ks4 {
+	qui eststo `outcome'_treat: reg `outcome' treat PGS                            ${Xvars} ${Xtreat}        , cluster(MoB), if window3mth == 1
+	qui eststo `outcome'_gxe:   reg `outcome' treat PGS PGSxtreat PGSxtreatxMoBnew ${Xvars} ${Xtreat} ${Xpgs}, cluster(MoB), if window3mth == 1
+
+	esttab `outcome'_treat `outcome'_gxe, b se keep(${tokeep}) order(${tokeep}) star(* 0.10 ** 0.05 *** 0.01) stats(r2 N, fmt(3 0))
+
+	esttab `outcome'_treat `outcome'_gxe using "${dirtables}/MoB_`outcome'.tex", replace ///
+		frag bookt b(3) se(3) keep(${tokeep}) ///
+		order(${tokeep}) star(* 0.10 ** 0.05 *** 0.01) ///
 		nomtitles stats(r2 N, label("R2" "Observations") fmt(3 0)) nonotes ///
-		coeflabel(MoB "MoB" MoB_PGS "MoB*PGS" MoB_PGS_treat "MoB*PGS*Treated" PGS "PGS" treat "Treated" treat_MoB "Treated*MoB" treat_PGS "Treated*PGS") 
+		coeflabel(MoB "MoB" PGSxMoBnew "MoB*PGS" PGSxtreatxMoBnew "MoB*PGS*Treated" PGS "PGS" treat "Treated" treatxMoBnew "Treated*MoB" PGSxtreat "Treated*PGS") 
 
-	* Other KS's
-	qui eststo 	k1: reg ks1 treat treat_MoB MoB PGS male YoB92 c_PC*, robust cluster(MoB), if window3mth == 1
-	qui eststo 	k2: reg ks1 treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if window3mth == 1
-	qui eststo 	k3: reg ks2 treat treat_MoB MoB PGS male YoB92 c_PC*, robust cluster(MoB), if window3mth == 1
-	qui eststo 	k4: reg ks2 treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if window3mth == 1
-	qui eststo 	k5: reg ks3 treat treat_MoB MoB PGS male YoB92 c_PC*, robust cluster(MoB), if window3mth == 1
-	qui eststo 	k6: reg ks3 treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if window3mth == 1
-	qui eststo 	k7: reg ks4 treat treat_MoB MoB PGS male YoB92 c_PC*, robust cluster(MoB), if window3mth == 1
-	qui eststo 	k8: reg ks4 treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if window3mth == 1
+} // end foreach outcome
 
-	esttab 	k1 k2 k3 k4 k5 k6 k7 k8 , b se keep(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) order(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) star(* 0.10 ** 0.05 *** 0.01) stats(r2 N, fmt(3 0))
 
-	esttab 	k1 k2 k3 k4 k5 k6 k7 k8 using "${dirtables}/MoB_ks_`pgs'.tex", replace ///
-		frag bookt b(3) se(3) keep(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) ///
-		order(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) star(* 0.10 ** 0.05 *** 0.01) ///
+
+
+*3----------- CLEAN OUTPUT ---------------------------*
+** All of the KS key stages in one table
+esttab 	ks1_treat ks1_gxe ks2_treat ks2_gxe ks3_treat ks3_gxe ks4_treat ks4_gxe, b se keep(${tokeep}) order(${tokeep}) star(* 0.10 ** 0.05 *** 0.01) stats(r2 N, fmt(3 0))
+
+esttab 	ks1_treat ks1_gxe ks2_treat ks2_gxe ks3_treat ks3_gxe ks4_treat ks4_gxe using "${dirtables}/MoB_ks.tex", replace ///
+		frag bookt b(3) se(3) keep(${tokeep}) ///
+		order(${tokeep}) star(* 0.10 ** 0.05 *** 0.01) ///
 		nomtitles stats(r2 N, label("R2" "Observations") fmt(3 0)) nonotes nonumber ///
 		mgroups("Key Stage 1" "Key Stage 2" "Key Stage 3" "Key Stage 4", pattern(1 0 1 0 1 0 1 0) span ///
 		prefix(\multicolumn{@span}{c}{) suffix(}) erepeat(\cmidrule(lr){@span})) ///
-		coeflabel(MoB "MoB" MoB_PGS "MoB*PGS" MoB_PGS_treat "MoB*PGS*Treated" PGS "PGS" treat "Treated" treat_MoB "Treated*MoB" treat_PGS "Treated*PGS") 
-}
+		coeflabel(MoB "MoB" PGSxMoBnew "MoB*PGS" PGSxtreatxMoBnew "MoB*PGS*Treated" PGS "PGS" treat "Treated" treatxMoBnew "Treated*MoB" PGSxtreat "Treated*PGS") 
 
 
+** All of the outcomes in one table
+esttab 	ea_treat ea_gxe ks1_treat ks1_gxe ks2_treat ks2_gxe ks3_treat ks3_gxe ks4_treat ks4_gxe, b se keep(${tokeep}) order(${tokeep}) star(* 0.10 ** 0.05 *** 0.01) stats(r2 N, fmt(3 0))
+
+esttab 	ea_treat ea_gxe ks1_treat ks1_gxe ks2_treat ks2_gxe ks3_treat ks3_gxe ks4_treat ks4_gxe using "${dirtables}/MoB_all_outcomes.tex", replace ///
+		frag bookt b(3) se(3) keep(${tokeep}) ///
+		order(${tokeep}) star(* 0.10 ** 0.05 *** 0.01) ///
+		nomtitles stats(r2 N, label("R2" "Observations") fmt(3 0)) nonotes nonumber ///
+		mgroups("Entry Assessment" "Key Stage 1" "Key Stage 2" "Key Stage 3" "Key Stage 4", pattern(1 0 1 0 1 0 1 0 1 0) span ///
+		prefix(\multicolumn{@span}{c}{) suffix(}) erepeat(\cmidrule(lr){@span})) ///
+		coeflabel(MoB "MoB" PGSxMoBnew "MoB*PGS" PGSxtreatxMoBnew "MoB*PGS*Treated" PGS "PGS" treat "Treated" treatxMoBnew "Treated*MoB" PGSxtreat "Treated*PGS") 
+
+
+
+
+
+
+
+
+
+
+*---------------- Instrumenting the PGS -----------------*
 *** ORIV
 global xvars "MoB treat_MoB male YoB92 c_PC* treatxmale treatxYoB92" 
 global order "order(treat treat_pgs_ukb pgs_ukb treat_pgs_23me pgs_23me mainVar mainVarint treat_MoB MoB pgs_ukbxMoB pgs_23mexMoB PGSxMoB MoB_pgs_ukb_treat MoB_pgs_23me_treat PGSxMoBxtreat) "
@@ -934,386 +885,78 @@ esttab 	pgs_ukb_ks4a pgs_ukb_ks4b pgs_23me_ks4a pgs_23me_ks4b oriv_ks4a oriv_ks4
 
 
 
-
-***************************************************************************
-* Continuous MoB
-eststo 	m1: reg ea  treat treat_MoB MoB PGS male YoB92 c_PC*, robust cluster(MoB)
-eststo 	m2: reg ks1 treat treat_MoB MoB PGS male YoB92 c_PC*, robust cluster(MoB)
-eststo 	m3: reg ks2 treat treat_MoB MoB PGS male YoB92 c_PC*, robust cluster(MoB)
-eststo 	m4: reg ks3 treat treat_MoB MoB PGS male YoB92 c_PC*, robust cluster(MoB)
-eststo 	m5: reg ks4 treat treat_MoB MoB PGS male YoB92 c_PC*, robust cluster(MoB) 
-
-esttab 	m1 m2 m3 m4 m5, b se keep(treat treat_MoB MoB PGS) star(* 0.10 ** 0.05 *** 0.01) stats(N, fmt(0))
-
-esttab 	m1 m2 m3 m4 m5 using "${dirtables}/MoB_OLS2.tex", replace ///
-	frag bookt b(3) se(3) keep(treat treat_MoB MoB PGS) star(* 0.10 ** 0.05 *** 0.01) ///
-	mtitles("Age 4" "Age 7" "Age 11" "Age 14" "Age 16") ///
-	stats(r2 N, label("R2" "Observations") fmt(3 0)) nonotes coeflabel(MoB "MoB" PGS "PGS" treat "Treated" treat_MoB "Treated*MoB") 
-
-set scheme plotplainblind
-
-***************************************************************************
-* Continuous MoB
-eststo 	m1: reg ea  treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB)
-eststo 	m2: reg ks1 treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB)
-eststo 	m3: reg ks2 treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB)
-eststo 	m4: reg ks3 treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB)
-eststo 	m5: reg ks4 treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB) 
-
-esttab 	m1 m2 m3 m4 m5, b se keep(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) star(* 0.10 ** 0.05 *** 0.01) stats(N, fmt(0))
-
-esttab 	m1 m2 m3 m4 m5 using "${dirtables}/MoB_GxE2.tex", replace ///
-	frag bookt b(3) se(3) keep(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) star(* 0.10 ** 0.05 *** 0.01) ///
-	mtitles("Age 4" "Age 7" "Age 11" "Age 14" "Age 16") ///
-	stats(r2 N, label("R2" "Observations") fmt(3 0)) nonotes coeflabel(MoB "MoB" MoB_PGS "MoB*PGS" MoB_PGS_treat "MoB*PGS*Treated" PGS "PGS" treat "Treated" treat_MoB "Treated*MoB" treat_PGS "Treated*PGS") 
-
-*------ Excluding the observations "far" from the cutoff
-forvalues width=2/5{
-
-	* Continuous MoB
-	eststo 	m1: reg ea  treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if window`width'mth == 1
-	eststo 	m2: reg ks1 treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if window`width'mth == 1
-	eststo 	m3: reg ks2 treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if window`width'mth == 1
-	eststo 	m4: reg ks3 treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if window`width'mth == 1
-	eststo 	m5: reg ks4 treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92, robust cluster(MoB), if window`width'mth == 1
-
-	esttab 	m1 m2 m3 m4 m5, b se keep(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) star(* 0.10 ** 0.05 *** 0.01) stats(N, fmt(0))
-
-	esttab 	m1 m2 m3 m4 m5 using "${dirtables}/MoB_GxE2_window`width'mth.tex", replace ///
-		frag bookt b(3) se(3) keep(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) star(* 0.10 ** 0.05 *** 0.01) ///
-		mtitles("Age 4" "Age 7" "Age 11" "Age 14" "Age 16") ///
-		stats(r2 N, label("R2" "Observations") fmt(3 0)) nonotes coeflabel(MoB "MoB" MoB_PGS "MoB*PGS" MoB_PGS_treat "MoB*PGS*Treated" PGS "PGS" treat "Treated" treat_MoB "Treated*MoB" treat_PGS "Treated*PGS") 
-	} // end forvalues width
-
-	* RDrobust
-	foreach test in ea ks1 ks2 ks3 ks4{
-		rdrobust `test' MoB if highPGS==1, c(9) covs(PGS male c_PC*)
-		rdrobust `test' MoB if highPGS==0, c(9) covs(PGS male c_PC*)
-	}
-
 } // end if regs
 
 
-
-
-if ${permutation} == 1 {
+***************************************************************************
+if ${perm} == 1 { // Permutation test as robustness checks and inference
 
 set seed 31415
-foreach pgs in plink ukb 23me 23me_ukb {
-	use "${dirdata}/Data_Set/cleanALSPAC4application.dta", clear
 
-	if "`pgs'"=="plink" {
-		* To replicate the earlier results using PLINK-based PGS:
-		drop if cidB==.
-		drop PGS treat_PGS MoB_PGS MoBnew_PGS MoB_PGS_treat MoBnew_PGS_treat 
-
-		merge 	1:1 cidB2492 birth_order using "${dirdata}/Child/PGS_children_alspac_plink_EA.dta"
-		drop 	if _m<3
-		drop 	_merge
-		sum 	pgs_child_EA
-		gen 	PGS = (pgs_child_EA -r(mean))/r(sd)
-
-		* create all of the demeaned interactions
-		gen treat_PGS = treat*PGS
-
-		gen MoB_PGS = MoB0*PGS
-		gen MoBnew_PGS = MoBnew0*PGS
-
-		gen MoB_PGS_treat = MoB0*PGS*treat
-		gen MoBnew_PGS_treat = MoBnew0*PGS*treat
-	}
-	if "`pgs'"=="ukb" {
-		* Using LDpred-based PGS with 23&me sumstats:
-		drop PGS treat_PGS MoB_PGS MoBnew_PGS MoB_PGS_treat MoBnew_PGS_treat 
-		gen PGS = pgs_children_ukb
-
-		* create all of the demeaned interactions
-		gen treat_PGS = treat*PGS
-
-		gen MoB_PGS = MoB0*PGS
-		gen MoBnew_PGS = MoBnew0*PGS
-
-		gen MoB_PGS_treat = MoB0*PGS*treat
-		gen MoBnew_PGS_treat = MoBnew0*PGS*treat
-	}
-	if "`pgs'"=="23me" {
-		* Using LDpred-based PGS with 23&me sumstats:
-		drop PGS treat_PGS MoB_PGS MoBnew_PGS MoB_PGS_treat MoBnew_PGS_treat 
-		gen PGS = pgs_children_23me
-
-		* create all of the demeaned interactions
-		gen treat_PGS = treat*PGS
-
-		gen MoB_PGS = MoB0*PGS
-		gen MoBnew_PGS = MoBnew0*PGS
-
-		gen MoB_PGS_treat = MoB0*PGS*treat
-		gen MoBnew_PGS_treat = MoBnew0*PGS*treat
-	}
-	else if "`pgs'"=="23me_ukb" {
-		* Using LDpred-based PGS with 23&me sumstats:
-		drop PGS treat_PGS MoB_PGS MoBnew_PGS MoB_PGS_treat MoBnew_PGS_treat 
-		gen PGS = pgs_children_23me_ukb
-
-		* create all of the demeaned interactions
-		gen treat_PGS = treat*PGS
-
-		gen MoB_PGS = MoB0*PGS
-		gen MoBnew_PGS = MoBnew0*PGS
-
-		gen MoB_PGS_treat = MoB0*PGS*treat
-		gen MoBnew_PGS_treat = MoBnew0*PGS*treat
-	}
-	
-	* create the interaction terms between PGS and the controls
-	foreach control of varlist male YoB92 c_PC1-c_PC10{
-		gen PGSx`control' = `control'*PGS
-		gen treatx`control' = `control'*treat
-	}
-
-	*------ Permutation test for EA
-	cd ${dirfigures}
-	capture rm permutation.dta
-
-	global controlsX       treat_MoB MoB_PGS MoB_PGS_treat MoB male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92
-
-local pgs 23me_ukb
-	* true regressions
-	reg ea i.treat PGS treat#c.PGS $controlsX , cluster(MoB), if window3mth == 1
-	local beta_x  = _b[1.treat#c.PGS]
-	local tstat_x = _b[1.treat#c.PGS]/_se[1.treat#c.PGS]
-	di `beta_x'
-	di `tstat_x'
-
-	* permutations
-	local iter 1000
-	permute PGS treat coef=_b[1.treat#c.PGS] se=_se[1.treat#c.PGS], saving(permutation) reps(`iter'): ///
-	reg ea i.treat PGS treat#c.PGS $controlsX , cluster(MoB), if window3mth == 1
+local iter 1000 //change this if you want it to go faster
 
 
-	*--Plot the histogram
-	preserve 
-		use permutation.dta, replace
+use "${dirdata}/Data_Set/cleanALSPAC4application.dta", clear
 
-		 _pctile coef, nq(1000)
-		local qin5 = r(r50)
-		local qin95 = r(r950)
-		local qin25 = r(r25)
-		local qin975 = r(r975)
-		display "`qin5'"
-		display "the median is " r(r500)
+* create the interaction terms between PGS and the controls
+foreach control of varlist male YoB92 c_PC1-c_PC10{
+	gen PGSx`control' = `control'*PGS
+	gen treatx`control' = `control'*treat
+} // end foreach control
 
-		hist coef, scheme(plotplainblind) xtitle("Coefficient interaction term") legend(off) fc(none) lc(blue) xline(`qin5' `qin95' `qin25' `qin975', lp(dash)) xline(`beta_x', lc(black) )
+*------ Permutation test for EA
+cd ${dirfigures}
+capture rm permutation.dta
 
-		graph export "${dirfigures}/permutation_coef_`pgs'.png", replace
+global controlsX       treat_MoB MoB_PGS MoB_PGS_treat MoB male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92
+
+* true regressions
+reg ea i.treat PGS treat#c.PGS $controlsX , cluster(MoB), if window3mth == 1
+local beta_x  = _b[1.treat#c.PGS]
+local tstat_x = _b[1.treat#c.PGS]/_se[1.treat#c.PGS]
+di `beta_x'
+di `tstat_x'
+
+* permutations
+permute PGS treat coef=_b[1.treat#c.PGS] se=_se[1.treat#c.PGS], saving(permutation) reps(`iter'): ///
+reg ea i.treat PGS treat#c.PGS $controlsX , cluster(MoB), if window3mth == 1
+
+
+*--Plot the histogram
+//preserve 
+	use permutation.dta, replace
+
+	 _pctile coef, nq(1000)
+	local qin5 = r(r50)
+	local qin95 = r(r950)
+	local qin25 = r(r25)
+	local qin975 = r(r975)
+	display "`qin5'"
+	display "the median is " r(r500)
+
+	hist coef, scheme(plotplainblind) xtitle("Coefficient interaction term") legend(off) fc(none) lc(blue) xline(`qin5' `qin95' `qin25' `qin975', lp(dash)) xline(`beta_x', lc(black) )
+
+	graph export "${dirfigures}/permutation_coef_`pgs'.png", replace
 
 
 
-		gen tstat = coef/se
-		 _pctile tstat, nq(1000)
-		local qin5 = r(r50)
-		local qin95 = r(r950)
-		local qin25 = r(r25)
-		local qin975 = r(r975)
-		display "`qin5'"
+	gen tstat = coef/se
+	 _pctile tstat, nq(1000)
+	local qin5 = r(r50)
+	local qin95 = r(r950)
+	local qin25 = r(r25)
+	local qin975 = r(r975)
+	display "`qin5'"
 
-		hist tstat, scheme(plotplainblind) xtitle("T-statistic interaction term") legend(off) fc(none) lc(blue) xline(`qin5' `qin95' `qin25' `qin975', lp(dash)) xline(`tstat_x', lc(black) )
+	hist tstat, scheme(plotplainblind) xtitle("T-statistic interaction term") legend(off) fc(none) lc(blue) xline(`qin5' `qin95' `qin25' `qin975', lp(dash)) xline(`tstat_x', lc(black) )
 
-		graph export "${dirfigures}/permutation_tstat_`pgs'.png", replace
-	restore
-}
+	graph export "${dirfigures}/permutation_tstat_`pgs'.png", replace
+//restore
 
-*--
 } // end if permutation
-
-
+} // end if analysis
 
 
 log close
 
-
-
-
-
-
-
-
-
-
-
 exit
-
-
-/***************************************************************************
-***** Identifying week of birth from data on 
-* Date questionnaire completed
-* Age in weeks when questionnaire completed
-* Month of birth
-***************************************************************************
-use "\\rdsfcifs.acrc.bris.ac.uk\RDSF_EFIM\shared\cohgroup\alspacrawdata\alspacchild_1.dta", clear
-keep 	cid084a qlet ka320 ka321 ka322 ka325 ka326 
-rename 	ka320 Q_day
-rename 	ka321 Q_month
-rename 	ka322 Q_year
-rename 	ka325 Q_age
-rename 	ka326 MoB
-
-replace Q_year = Q_year + 1900
-gen 	date = mdy(Q_month,Q_day,Q_year)
-gen 	WoB = date - (Q_age*7)
-format 	date WoB %td
-
-* Check mismatches
-gen 	month = month(WoB)
-tab 	month MoB
-
-* Few mismatches - ensure WoB takes same value as MoB (former is derived by us from data available; latter is provided by ALSPAC)
-replace WoB = WoB-6 if month-MoB==1 | (month==1 & MoB==12)
-
-* Check mismatches again
-drop 	month
-gen 	month = month(WoB)
-assert 	month == MoB if month<. & MoB<.
-drop 	month
-
-* Create weeks with week 1 being the w/c 1 September 
-gen 	week = 0 if (WoB>=td("01sep1991") & WoB<=td("07sep1991")) | (WoB>=td("01sep1992") & WoB<=td("07sep1992"))
-
-* 1/9/1991 = 11566; 1/9/1992 = 11932
-local wkstart90 = 11208 	//  8-9-1990
-local wkend90   = 11214		// 14-9-1990
-local wkstart91 = 11573 	//  8-9-1991
-local wkend91   = 11579		// 14-9-1991
-local wkstart92 = 11939 	//  8-9-1992
-local wkend92   = 11945		// 14-9-1992
-local wk        = 1
-while `wk'<=51 {
-	replace week    = `wk' if (WoB>=`wkstart90' & WoB<=`wkend90') | (WoB>=`wkstart91' & WoB<=`wkend91') | (WoB>=`wkstart92' & WoB<=`wkend92')
-	local wkstart90 = `wkstart90'+7
-	local wkend90   = `wkend90'+7
-	local wkstart91 = `wkstart91'+7
-	local wkend91   = `wkend91'+7
-	local wkstart92 = `wkstart92'+7
-	local wkend92   = `wkend92'+7
-	local wk        = `wk'+1
-}
-
-* Add last 1-2 days of the 'year' (i.e. 30/31 Aug) to week 52 
-replace week = 51 if WoB==td(30aug1991) | WoB==td(31aug1991) | WoB==td(30aug1992) | WoB==td(31aug1992)
-
-
-* Check graphs of educational attainment by week
-merge 	1:1 cid084a qlet using "C:\Users\ecsmvhkv\OneDrive - University of Bristol\MyFiles-Migrated\Projects\PrenatalMentalHealth\Stata\data02.dta", keepusing(ea_avg k1avg_alt k2avg_alt k3avg_alt k4avg_alt)
-drop 	if _m<3
-drop 	_m
-
-
-preserve
-
-	* Collapse the data
-	collapse ea_avg k1avg_alt k2avg_alt k3avg_alt k4avg_alt, by(week)
-
-	twoway  (line ea_avg    week, sort) ///
-		(line k1avg_alt week, sort) ///
-		(line k2avg_alt week, sort) ///
-		(line k3avg_alt week, sort) ///
-		(line k4avg_alt week, sort) ///
-		if ea_avg>-0.5 & k1avg_alt>-0.5 & k2avg_alt>-0.5 & k3avg_alt>-0.5 & k4avg_alt>-0.5 ///
-		, xlabel(0(10)51, valuelabel) ///
-		ytitle("Standardised score") xtitle("Week of birth (relative to September)") ///
-		legend(on order(1 "Age 4" 2 "Age 7" 3 "Age 11" 4 "Age 14" 5 "Age 16") pos(6) row(1)) ///
-		ylabel(-.5(.25).5) yscale(range(-0.5 0.5)) yline(0) ///
-		title("Test scores by week of birth") scheme(s1mono)
-	graph export "${dirfigures}/WoB.png", replace
-
-	twoway (line ea_avg week, sort), xlabel(0(10)50, valuelabel) ///
-		ytitle("Entry assessment") xtitle("Week of birth") ///
-		ylabel(-.5(.25).5) yscale(range(-0.5 0.5)) yline(0) ///
-		title("Score on Entry Assessment test (age 4/5)") scheme(s1mono)
-	graph export "${dirfigures}/WoB_ea.png", replace
-	
-	twoway (line k1avg_alt week, sort) if k1avg_alt>-0.5, xlabel(0(10)50, valuelabel) ///
-		ytitle("Key Stage 1") xtitle("Week of birth") ///
-		ylabel(-.5(.25).5) yscale(range(-0.5 0.5)) yline(0) ///
-		title("Score on Key Stage 1 test (age 7)") scheme(s1mono)
-	graph export "${dirfigures}/WoB_ks1.png", replace
-
-	twoway (line k2avg_alt week, sort) if k2avg_alt>-0.5, xlabel(0(10)50, valuelabel) ///
-		ytitle("Key Stage 2") xtitle("Week of birth") ///
-		ylabel(-.5(.25).5) yscale(range(-0.5 0.5)) yline(0) ///
-		title("Score on Key Stage 2 test (age 11)") scheme(s1mono)
-	graph export "${dirfigures}/WoB_ks2.png", replace
-
-	twoway (line k3avg_alt week, sort) if k3avg_alt>-0.5, xlabel(0(10)50, valuelabel) ///
-		ytitle("Key Stage 3") xtitle("Week of birth") ///
-		ylabel(-.5(.25).5) yscale(range(-0.5 0.5)) yline(0) ///
-		title("Score on Key Stage 3 test (age 14)") scheme(s1mono)
-	graph export "${dirfigures}/WoB_ks3.png", replace
-
-	twoway (line k4avg_alt week, sort) if k4avg_alt>-0.5, xlabel(0(10)50, valuelabel) ///
-		ytitle("Key Stage 4") xtitle("Week of birth") ///
-		ylabel(-.5(.25).5) yscale(range(-0.5 0.5)) yline(0) ///
-		title("Score on Key Stage 4 test (age 16)") scheme(s1mono)
-	graph export "${dirfigures}/WoB_ks4.png", replace
-	
-
-restore
-
-preserve
-
-	gen 	wk = week-40 if week>=39 & week<.
-	replace wk = week+12 if week<=12
-	
-	* Collapse the data
-	collapse ea_avg k1avg_alt k2avg_alt k3avg_alt k4avg_alt, by(wk)
-
-	twoway  (line ea_avg    wk, sort) ///
-		(line k1avg_alt wk, sort) ///
-		(line k2avg_alt wk, sort) ///
-		(line k3avg_alt wk, sort) ///
-		(line k4avg_alt wk, sort) ///
-		if ea_avg>-0.5 & k1avg_alt>-0.5 & k2avg_alt>-0.5 & k3avg_alt>-0.5 & k4avg_alt>-0.5 ///
-		, xlabel(0(4)24, valuelabel) ///
-		ytitle("Standardised score") xtitle("Week of birth (September = week 12)") ///
-		legend(on order(1 "Age 4" 2 "Age 7" 3 "Age 11" 4 "Age 14" 5 "Age 16") pos(6) row(1)) ///
-		ylabel(-.5(.25).5) yscale(range(-0.5 0.5)) yline(0) ///
-		title("Test scores by week of birth") scheme(s1mono)
-	graph export "${dirfigures}/WoB.png", replace
-
-	twoway (line ea_avg wk, sort), xlabel(0(4)24, valuelabel) ///
-		ytitle("Entry assessment") xtitle("Week of birth") ///
-		ylabel(-.5(.25).5) yscale(range(-0.5 0.5)) yline(0) ///
-		title("Score on Entry Assessment test (age 4/5)") scheme(s1mono)
-	graph export "${dirfigures}/WoB_ea.png", replace
-	
-	twoway (line k1avg_alt wk, sort) if k1avg_alt>-0.5, xlabel(0(4)24, valuelabel) ///
-		ytitle("Key Stage 1") xtitle("Week of birth") ///
-		ylabel(-.5(.25).5) yscale(range(-0.5 0.5)) yline(0) ///
-		title("Score on Key Stage 1 test (age 7)") scheme(s1mono)
-	graph export "${dirfigures}/WoB_ks1.png", replace
-
-	twoway (line k2avg_alt wk, sort) if k2avg_alt>-0.5, xlabel(0(4)24, valuelabel) ///
-		ytitle("Key Stage 2") xtitle("Week of birth") ///
-		ylabel(-.5(.25).5) yscale(range(-0.5 0.5)) yline(0) ///
-		title("Score on Key Stage 2 test (age 11)") scheme(s1mono)
-	graph export "${dirfigures}/WoB_ks2.png", replace
-
-	twoway (line k3avg_alt wk, sort) if k3avg_alt>-0.5, xlabel(0(4)24, valuelabel) ///
-		ytitle("Key Stage 3") xtitle("Week of birth") ///
-		ylabel(-.5(.25).5) yscale(range(-0.5 0.5)) yline(0) ///
-		title("Score on Key Stage 3 test (age 14)") scheme(s1mono)
-	graph export "${dirfigures}/WoB_ks3.png", replace
-
-	twoway (line k4avg_alt wk, sort) if k4avg_alt>-0.5, xlabel(0(4)24, valuelabel) ///
-		ytitle("Key Stage 4") xtitle("Week of birth") ///
-		ylabel(-.5(.25).5) yscale(range(-0.5 0.5)) yline(0) ///
-		title("Score on Key Stage 4 test (age 16)") scheme(s1mono)
-	graph export "${dirfigures}/WoB_ks4.png", replace
-	
-
-restore
-
-
-
-hist coef, addplot(pci 0 0.16 4 0.16) xtitle("Coefficient interaction term") legend(off)
-hist tstat, addplot(pci 0 2 0.4 2) xtitle("t-statistic interaction term") legend(off)
