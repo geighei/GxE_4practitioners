@@ -35,7 +35,7 @@ log using "${dirdropbox}/projects/GxE_4practitioners/logfiles/PractictionersPape
 
 
 ** SKIP Patterns (set to zero if you want to skip that section)
-global dataclean      = 1
+global dataclean      = 0
 global analysis       = 1
 	global IDstrategy     = 1
 	global powercalc      = 0    // this takes a while
@@ -43,7 +43,8 @@ global analysis       = 1
 	global predictive     = 1
 	global funcform       = 1
 	global regs           = 1
-	global perm           = 0    // this takes a while
+	global iv             = 1
+	global perm           = 1    // this takes a while
 
 *---------------------------------------------------------------------------------*
 * CLEAN THE DATA
@@ -573,8 +574,7 @@ esttab rGE using "${dirtables}/corr_treat_PGS.tex", replace ///
 	coeflabel(PGS "Child PGS" PGS_mothers "Mom PGS") 
 } // end if rGE
 
-
-
+***************************************************************************
 if ${predictive}==1{ // Distribution and predictive power of the PGS
 use "${dirdata}/Data_Set/cleanALSPAC4application.dta", clear
 keep if window3mth == 1 // keep only 3 months of each side of the cutoff
@@ -630,7 +630,6 @@ esttab 	`outcome'_plink `outcome'_ukb `outcome'_23me `outcome'_23me_ukb using "$
 est drop _all
 } // end if predictive
 
-
 ***************************************************************************
 if ${funcform}==1{ // Check the function form for the GxE interaction
 
@@ -679,7 +678,6 @@ foreach outcome in ea ks1 ks2 ks3 ks4 {
 } // end foreach outcome
 
 } // end if funcform
-
 
 ***************************************************************************
 if ${regs}==1{ // runs the regressions
@@ -890,7 +888,6 @@ esttab 	pgs_ukb_ks4a pgs_ukb_ks4b pgs_23me_ks4a pgs_23me_ks4b oriv_ks4a oriv_ks4
 
 } // end if regs
 
-
 ***************************************************************************
 if ${perm} == 1 { // Permutation test as robustness checks and inference
 
@@ -898,23 +895,48 @@ set seed 31415
 
 local iter 1000 //change this if you want it to go faster
 
-
 use "${dirdata}/Data_Set/cleanALSPAC4application.dta", clear
+keep if window3mth == 1
 
-* create the interaction terms between PGS and the controls
-foreach control of varlist male YoB92 c_PC1-c_PC10{
-	gen PGSx`control' = `control'*PGS
-	gen treatx`control' = `control'*treat
-} // end foreach control
+
+*----------- CREATE INTERACTION terms between PGS, treat, and the demeaned controls (Keller2014 and Lin2013)
+*GxE interaction
+qui sum PGS
+replace PGS = (PGS-r(mean)) //mean zero in the analytical sample
+gen PGSxtreat = treat * PGS
+
+*G and E iteracted with controls
+global Xvars       MoBnew male YoB92 c_PC* // input: variables to control for in the regression
+global Xpgs        ""
+global Xtreat      ""
+ 
+foreach control of varlist $Xvars {
+	qui sum `control'
+	gen PGSx`control'   = PGS   * (`control'-r(mean))
+	gen treatx`control' = treat * (`control'-r(mean))
+	
+	//automatically populate the global list of interacted controls
+	global Xpgs   ${Xpgs}   PGSx`control'  
+	global Xtreat ${Xtreat} treatx`control'
+} //end foreach control
+
+*GxExControls ---> only one triple interaction, with the RDD running variable, to keep things simple
+qui sum MoBnew
+gen PGSxtreatxMoBnew = PGSxtreat * (MoBnew -r(mean))
+
+
+
+
+
+
 
 *------ Permutation test for EA
 cd ${dirfigures}
 capture rm permutation.dta
 
-global controlsX       treat_MoB MoB_PGS MoB_PGS_treat MoB male YoB92 c_PC* PGSxmale PGSxYoB92 PGSxc_PC* treatxmale treatxYoB92
 
-* true regressions
-reg ea i.treat PGS treat#c.PGS $controlsX , cluster(MoB), if window3mth == 1
+* true regression
+reg ea  i.treat PGS treat#c.PGS   PGSxtreatxMoBnew ${Xvars} ${Xtreat} ${Xpgs}, cluster(MoB), if window3mth == 1
 local beta_x  = _b[1.treat#c.PGS]
 local tstat_x = _b[1.treat#c.PGS]/_se[1.treat#c.PGS]
 di `beta_x'
@@ -922,8 +944,7 @@ di `tstat_x'
 
 * permutations
 permute PGS treat coef=_b[1.treat#c.PGS] se=_se[1.treat#c.PGS], saving(permutation) reps(`iter'): ///
-reg ea i.treat PGS treat#c.PGS $controlsX , cluster(MoB), if window3mth == 1
-
+reg ea  i.treat PGS treat#c.PGS   PGSxtreatxMoBnew ${Xvars} ${Xtreat} ${Xpgs}, cluster(MoB), if window3mth == 1
 
 *--Plot the histogram
 //preserve 
