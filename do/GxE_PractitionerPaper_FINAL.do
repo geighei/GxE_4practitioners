@@ -774,6 +774,9 @@ esttab 	ea_treat ea_gxe ks1_treat ks1_gxe ks2_treat ks2_gxe ks3_treat ks3_gxe ks
 
 
 
+
+
+
 *---------------- Instrumenting the PGS -----------------*
 *** ORIV
 global xvars "MoB treat_MoB male YoB92 c_PC* treatxmale treatxYoB92" 
