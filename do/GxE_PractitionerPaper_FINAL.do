@@ -35,7 +35,7 @@ log using "${dirdropbox}/projects/GxE_4practitioners/logfiles/PractictionersPape
 
 
 ** SKIP Patterns (set to zero if you want to skip that section)
-global dataclean      = 0
+global dataclean      = 1
 global analysis       = 1
 	global IDstrategy     = 1
 	global powercalc      = 0    // this takes a while
@@ -43,7 +43,7 @@ global analysis       = 1
 	global predictive     = 1
 	global funcform       = 1
 	global regs           = 1
-	global iv             = 1
+	global iv             = 0
 	global perm           = 1    // this takes a while
 
 *---------------------------------------------------------------------------------*
@@ -199,14 +199,19 @@ label 	var IQ "Wechsler Intelligence Scale for Children (IQ, age 8)"
 
 *   August vs. September births
 gen 	MoBnew = MoB
-recode 	MoBnew (9=1) (10=2) (11=3) (12=4) (1=5) (2=6) (3=-5) (4=-4) (5=-3) (6=-2) (7=-1) (8=-0)
-label 	def MoBnew 1 "Sep" 2 "Oct" 3 "Nov" 4 "Dec" 5 "Jan" 6 "Feb" -5 "Mar" -4 "Apr" -3 "May" -2 "Jun" -1 "Jul" 0 "Aug" 
+recode 	MoBnew (9=0) (10=1) (11=2) (12=3) (1=4) (2=5) (3=6) (4=-5) (5=-4) (6=-3) (7=-2) (8=-1)
+label 	def MoBnew 0 "Sep" 1 "Oct" 2 "Nov" 3 "Dec" 4 "Jan" 5 "Feb" 6 "Mar"        -5 "Apr" -4 "May" -3 "Jun" -2 "Jul" -1 "Aug" 
 label 	val MoBnew MoBnew
+label var MoBnew "Month of birth (Sept=0)"
 
 * "Treated": born in the 6 months after September
-gen treat = (MoBnew>0) if MoBnew<.
+gen treat = (MoBnew>=0) if MoBnew<.
 label define treat 0 "Born before Sept" 1 "Born after Sept"
 label values treat treat
+
+tab MoB MoBnew, nol
+tab MoBnew treat
+
 
 **---- include and clean some additional baseline characteristics (mostly for table on baseline balance)---#
 * Birth weight
@@ -338,7 +343,7 @@ gen MoBnew_PGS_treat = MoBnew0*PGS*treat
 
 * sample selection based on window of n-months from the cutoff
 forvalues width=2/5{
-	gen window`width'mth = (MoBnew <=`width' & MoBnew>(-`width')) if MoBnew<.
+	gen window`width'mth = (MoBnew <=`width'-1 & MoBnew>(-`width'-1)) if MoBnew<.
 }
 tab MoB window3mth
 
@@ -697,7 +702,8 @@ global tokeep      treat PGS PGSxtreat treatxMoBnew PGSxMoBnew PGSxtreatxMoBnew 
 *1----------- CREATE INTERACTION terms between PGS, treat, and the demeaned controls (Keller2014 and Lin2013)
 *GxE interaction
 qui sum PGS
-gen PGSxtreat = treat * (PGS-r(mean))
+replace PGS = (PGS-r(mean)) // demean the PGS in the analytical sample (3 month window)
+gen PGSxtreat = treat * PGS
 
 
 *G and E iteracted with controls
@@ -763,43 +769,56 @@ esttab 	ea_treat ea_gxe ks1_treat ks1_gxe ks2_treat ks2_gxe ks3_treat ks3_gxe ks
 		prefix(\multicolumn{@span}{c}{) suffix(}) erepeat(\cmidrule(lr){@span})) ///
 		coeflabel(MoB "MoB" PGSxMoBnew "MoB*PGS" PGSxtreatxMoBnew "MoB*PGS*Treated" PGS "PGS" treat "Treated" treatxMoBnew "Treated*MoB" PGSxtreat "Treated*PGS") 
 
+} // end if regs
 
-
-
-
-
-
-
-
-
+***************************************************************************
+if ${iv}==1{ // runs the ORIV analysis
+global Xvars       MoBnew male YoB92 c_PC* // input: variables to control for in the regression
+global tokeep      pgs_ukb treat_pgs_ukb pgs_ukbxMoBnew pgs_ukbxtreatxMoBnew  /// variables to keep in the output
+				   pgs_23me treat_pgs_23me pgs_23mexMoBnew pgs_23mextreatxMoBnew ///
+                   treat treatxMoBnew MoBnew mainVar mainVarint PGSxMoBnew PGSxMoBnewxtreat ///
 
 
 
 *---------------- Instrumenting the PGS -----------------*
 *** ORIV
-global xvars "MoB treat_MoB male YoB92 c_PC* treatxmale treatxYoB92" 
-global order "order(treat treat_pgs_ukb pgs_ukb treat_pgs_23me pgs_23me mainVar mainVarint treat_MoB MoB pgs_ukbxMoB pgs_23mexMoB PGSxMoB MoB_pgs_ukb_treat MoB_pgs_23me_treat PGSxMoBxtreat) "
-global keep  "keep(treat treat_pgs_ukb pgs_ukb treat_pgs_23me pgs_23me mainVar mainVarint treat_MoB MoB pgs_ukbxMoB pgs_23mexMoB PGSxMoB MoB_pgs_ukb_treat MoB_pgs_23me_treat PGSxMoBxtreat) "
 
 use "${dirdata}/Data_Set/cleanALSPAC4application.dta", clear
 keep if window3mth == 1
 
-* rename variables
-rename 	pgs_children_ukb  pgs_ukb 
-rename 	pgs_children_23me pgs_23me
+* demean and rename the two PGS
+qui sum pgs_children_ukb  
+gen pgs_ukb = pgs_children_ukb -r(mean)
+gen treat_pgs_ukb = treat * pgs_ukb 
 
-* Create interactions
-gen treat_pgs_ukb=treat*pgs_ukb
-gen treat_pgs_23me=treat*pgs_23me
+qui sum pgs_children_23me  
+gen pgs_23me = pgs_children_23me -r(mean)
+gen treat_pgs_23me = treat * pgs_23me 
 
-foreach control of varlist male YoB92 c_PC1-c_PC10 MoB {
-	gen treatx`control' = `control'*treat
-	gen pgs_ukbx`control' = `control'*pgs_ukb
-	gen pgs_23mex`control' = `control'*pgs_23me
-}
+*G and E iteracted with controls
+global Xpgs_ukb    ""
+global Xpgs_23me   ""
+global Xtreat      ""
 
-gen MoB_pgs_ukb_treat  = MoB*treat_pgs_ukb
-gen MoB_pgs_23me_treat = MoB*treat_pgs_23me
+foreach control of varlist $Xvars {
+	qui sum `control'
+	gen PGSx`control'      = PGS      * (`control'-r(mean))
+	gen pgs_ukbx`control'  = pgs_ukb  * (`control'-r(mean))
+	gen pgs_23mex`control' = pgs_23me * (`control'-r(mean))
+	gen treatx`control'    = treat    * (`control'-r(mean))
+	
+	//automatically populate the global list of interacted controls
+	global Xpgs_ukb   ${Xpgs_ukb}  pgs_ukbx`control'  
+	global Xpgs_23me  ${Xpgs_23me} pgs_23mex`control'  
+	global Xtreat     ${Xtreat}    treatx`control'
+} //end foreach control
+
+*GxExControls ---> only one triple interaction, with the RDD running variable, to keep things simple
+qui sum MoBnew
+gen PGSxtreatxMoBnew      = treat_PGS      * (MoBnew -r(mean))
+gen pgs_ukbxtreatxMoBnew  = treat_pgs_ukb  * (MoBnew -r(mean))
+gen pgs_23mextreatxMoBnew = treat_pgs_23me * (MoBnew -r(mean))
+
 
 * Compute correlation between scores to determine the scaling factor
 reg pgs_ukb pgs_23me
@@ -809,12 +828,15 @@ qui replace pgs_23me= pgs_23me/sqrt(corrscores)
 
 foreach outcome in ea ks1 ks2 ks3 ks4 {
 
+local outcome ea
+
 	local pgs1 = "pgs_ukb"
 	local pgs2 = "pgs_23me"
 
 	* Run IV sequentially (without interactions a la Keller)
-	eststo `pgs1'_`outcome'a: ivreg `outcome' treat (`pgs1' treat_`pgs1' = `pgs2' treat_`pgs2') $xvars, cluster (MoB)
-	eststo `pgs2'_`outcome'a: ivreg `outcome' treat (`pgs2' treat_`pgs2' = `pgs1' treat_`pgs1') $xvars, cluster (MoB)
+	eststo PGS_`outcome'    : reg   `outcome' treat   PGS treat_PGS                             ${Xvars}  ${Xtreat}, cluster (MoB)
+	eststo `pgs1'_`outcome'a: ivreg `outcome' treat (`pgs1' treat_`pgs1' = `pgs2' treat_`pgs2') ${Xvars}  ${Xtreat}, cluster (MoB)
+	eststo `pgs2'_`outcome'a: ivreg `outcome' treat (`pgs2' treat_`pgs2' = `pgs1' treat_`pgs1') ${Xvars} ${Xtreat}, cluster (MoB)
 
 	* Run IV sequentially (with all interactions a la Keller instrumented)
 	eststo `pgs1'_`outcome'b: ivreg `outcome' treat (`pgs1' treat_`pgs1' `pgs1'xMoB MoB_`pgs1'_treat `pgs1'xmale `pgs1'xYoB92 `pgs1'xc_PC* = `pgs2' treat_`pgs2' `pgs2'xMoB MoB_`pgs2'_treat `pgs2'xmale `pgs2'xYoB92 `pgs2'xc_PC*) $xvars, cluster (MoB)
@@ -876,7 +898,7 @@ foreach outcome in ea ks1 ks2 ks3 ks4 {
 		mgroups("Key Stage 1" "Key Stage 2" "Key Stage 3" "Key Stage 4", pattern(1 0 1 0 1 0 1 0) span ///
 		prefix(\multicolumn{@span}{c}{) suffix(}) erepeat(\cmidrule(lr){@span})) ///
 		coeflabel(MoB "MoB" MoB_PGS "MoB*PGS" MoB_PGS_treat "MoB*PGS*Treated" PGS "PGS" treat "Treated" treat_MoB "Treated*MoB" treat_PGS "Treated*PGS") 
-}
+}  // end foreach outcome
 
 esttab 	pgs_ukb_eaa  pgs_ukb_eab  pgs_23me_eaa  pgs_23me_eab  oriv_eaa  oriv_eab , b se $keep $order star(* 0.10 ** 0.05 *** 0.01) stats(r2 N, fmt(3 0))
 esttab 	pgs_ukb_ks1a pgs_ukb_ks1b pgs_23me_ks1a pgs_23me_ks1b oriv_ks1a oriv_ks1b, b se $keep $order star(* 0.10 ** 0.05 *** 0.01) stats(r2 N, fmt(3 0))
@@ -886,7 +908,7 @@ esttab 	pgs_ukb_ks4a pgs_ukb_ks4b pgs_23me_ks4a pgs_23me_ks4b oriv_ks4a oriv_ks4
 
 
 
-} // end if regs
+} // end if iv
 
 ***************************************************************************
 if ${perm} == 1 { // Permutation test as robustness checks and inference

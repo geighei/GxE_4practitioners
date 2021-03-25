@@ -34,11 +34,15 @@ pwcorr PGS pgs_children*
 tab MoB treat
 global Xvars       MoBnew male YoB92 c_PC* // input: variables to control for in the regression
 
+capture drop MoBnew
+
+gen MoBnew = MoB-9
 
 *1----------- CREATE INTERACTION terms between PGS, treat, and the demeaned controls (Keller2014 and Lin2013)
 *GxE interaction
 qui sum PGS
-gen PGSxtreat = treat * (PGS-r(mean))
+replace PGS = (PGS-r(mean))
+gen PGSxtreat = treat * PGS
 
 
 *G and E iteracted with controls
