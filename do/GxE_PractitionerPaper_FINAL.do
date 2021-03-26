@@ -38,12 +38,12 @@ log using "${dirdropbox}/projects/GxE_4practitioners/logfiles/PractictionersPape
 global dataclean      = 1
 global analysis       = 1
 	global IDstrategy     = 1
-	global powercalc      = 0    // this takes a while
+	global powercalc      = 1    // this takes a long while
 	global rGE            = 1
 	global predictive     = 1
 	global funcform       = 1
 	global regs           = 1
-	global iv             = 0
+	global iv             = 1    // this takes a while
 	global perm           = 1    // this takes a while
 
 *---------------------------------------------------------------------------------*
@@ -774,9 +774,11 @@ esttab 	ea_treat ea_gxe ks1_treat ks1_gxe ks2_treat ks2_gxe ks3_treat ks3_gxe ks
 ***************************************************************************
 if ${iv}==1{ // runs the ORIV analysis
 global Xvars       MoBnew male YoB92 c_PC* // input: variables to control for in the regression
-global tokeep      pgs_ukb treat_pgs_ukb pgs_ukbxMoBnew pgs_ukbxtreatxMoBnew  /// variables to keep in the output
-				   pgs_23me treat_pgs_23me pgs_23mexMoBnew pgs_23mextreatxMoBnew ///
-                   treat treatxMoBnew MoBnew mainVar mainVarint PGSxMoBnew PGSxMoBnewxtreat ///
+global tokeep      pgs_ukbxtreat  pgs_23mextreat mainVarint  /// 
+                   pgs_ukb  pgs_23me mainVar treat ///
+				   pgs_ukbxMoBnew  pgs_ukbxtreatxMoBnew  /// variables to keep in the output
+				   pgs_23mexMoBnew pgs_23mextreatxMoBnew ///
+                   treatxMoBnew MoBnew PGSxMoBnew PGSxMoBnewxtreat ///
 
 
 
@@ -789,11 +791,15 @@ keep if window3mth == 1
 * demean and rename the two PGS
 qui sum pgs_children_ukb  
 gen pgs_ukb = pgs_children_ukb -r(mean)
-gen treat_pgs_ukb = treat * pgs_ukb 
+gen pgs_ukbxtreat= treat * pgs_ukb 
 
 qui sum pgs_children_23me  
 gen pgs_23me = pgs_children_23me -r(mean)
-gen treat_pgs_23me = treat * pgs_23me 
+gen pgs_23mextreat = treat * pgs_23me 
+
+qui sum PGS
+replace PGS = PGS - r(mean)
+gen PGSxtreat = treat * PGS 
 
 *G and E iteracted with controls
 global Xpgs_ukb    ""
@@ -815,9 +821,9 @@ foreach control of varlist $Xvars {
 
 *GxExControls ---> only one triple interaction, with the RDD running variable, to keep things simple
 qui sum MoBnew
-gen PGSxtreatxMoBnew      = treat_PGS      * (MoBnew -r(mean))
-gen pgs_ukbxtreatxMoBnew  = treat_pgs_ukb  * (MoBnew -r(mean))
-gen pgs_23mextreatxMoBnew = treat_pgs_23me * (MoBnew -r(mean))
+gen PGSxtreatxMoBnew      = PGSxtreat      * (MoBnew -r(mean))
+gen pgs_ukbxtreatxMoBnew  = pgs_ukbxtreat * (MoBnew -r(mean))
+gen pgs_23mextreatxMoBnew = pgs_23mextreat * (MoBnew -r(mean))
 
 
 * Compute correlation between scores to determine the scaling factor
@@ -828,21 +834,31 @@ qui replace pgs_23me= pgs_23me/sqrt(corrscores)
 
 foreach outcome in ea ks1 ks2 ks3 ks4 {
 
-local outcome ea
-
 	local pgs1 = "pgs_ukb"
 	local pgs2 = "pgs_23me"
 
 	* Run IV sequentially (without interactions a la Keller)
-	eststo PGS_`outcome'    : reg   `outcome' treat   PGS treat_PGS                             ${Xvars}  ${Xtreat}, cluster (MoB)
-	eststo `pgs1'_`outcome'a: ivreg `outcome' treat (`pgs1' treat_`pgs1' = `pgs2' treat_`pgs2') ${Xvars}  ${Xtreat}, cluster (MoB)
-	eststo `pgs2'_`outcome'a: ivreg `outcome' treat (`pgs2' treat_`pgs2' = `pgs1' treat_`pgs1') ${Xvars} ${Xtreat}, cluster (MoB)
+	eststo PGS_`outcome'a   : reg   `outcome' treat   PGS PGSxtreat                             ${Xvars} ${Xtreat}, cluster (MoB)
+	eststo `pgs1'_`outcome'a: ivreg `outcome' treat (`pgs1' `pgs1'xtreat = `pgs2' `pgs2'xtreat) ${Xvars} ${Xtreat}, cluster (MoB)
+	eststo `pgs2'_`outcome'a: ivreg `outcome' treat (`pgs2' `pgs2'xtreat = `pgs1' `pgs1'xtreat) ${Xvars} ${Xtreat}, cluster (MoB)
+
+	* Run IV sequentially (with all interactions a la Keller, NOT instrumented)
+	eststo PGS_`outcome'b   : reg   `outcome' treat   PGS PGSxtreat PGSxtreatxMoBnew            ${Xvars} ${Xtreat} ${Xpgs}, cluster (MoB)
+	eststo `pgs1'_`outcome'b: ivreg `outcome' treat (`pgs1' `pgs1'xtreat = `pgs2' `pgs2'xtreat) ${Xvars} ${Xtreat} ${X`pgs1'}, cluster (MoB)
+	eststo `pgs2'_`outcome'b: ivreg `outcome' treat (`pgs2' `pgs2'xtreat = `pgs1' `pgs1'xtreat) ${Xvars} ${Xtreat} ${X`pgs2'}, cluster (MoB)
 
 	* Run IV sequentially (with all interactions a la Keller instrumented)
-	eststo `pgs1'_`outcome'b: ivreg `outcome' treat (`pgs1' treat_`pgs1' `pgs1'xMoB MoB_`pgs1'_treat `pgs1'xmale `pgs1'xYoB92 `pgs1'xc_PC* = `pgs2' treat_`pgs2' `pgs2'xMoB MoB_`pgs2'_treat `pgs2'xmale `pgs2'xYoB92 `pgs2'xc_PC*) $xvars, cluster (MoB)
-	eststo `pgs2'_`outcome'b: ivreg `outcome' treat (`pgs2' treat_`pgs2' `pgs2'xMoB MoB_`pgs2'_treat `pgs2'xmale `pgs2'xYoB92 `pgs2'xc_PC* = `pgs1' treat_`pgs1' `pgs1'xMoB MoB_`pgs1'_treat `pgs1'xmale `pgs1'xYoB92 `pgs1'xc_PC*) $xvars, cluster (MoB)
+	eststo `pgs1'_`outcome'c: ivreg `outcome' treat (`pgs1' `pgs1'xtreat ${X`pgs1'} = `pgs2' `pgs2'xtreat ${X`pgs2'} ) ${Xvars} ${Xtreat}, cluster (MoB)
+	eststo `pgs2'_`outcome'c: ivreg `outcome' treat (`pgs2' `pgs2'xtreat ${X`pgs2'} = `pgs1' `pgs1'xtreat ${X`pgs1'} ) ${Xvars} ${Xtreat}, cluster (MoB)
+	
+	esttab PGS_`outcome'a PGS_`outcome'b ///
+	       `pgs1'_`outcome'a `pgs1'_`outcome'b `pgs1'_`outcome'c ///
+	       `pgs2'_`outcome'a `pgs2'_`outcome'b `pgs2'_`outcome'c ///
+		   , keep(PGSxtreat `pgs1'xtreat `pgs2'xtreat)
+		   
 
-	preserve							// STILL NEED TO ADD INTERACTIONS A LA KELLER - IT MAKES A BIG DIFFERENCE IN STANDARD IV ABOVE
+	
+	preserve
 		expand 	2, generate(replicant)
 		gen 	mainVar = `pgs1' if replicant == 0
 		gen 	mainVarint = treat * `pgs1' if replicant==0
@@ -852,61 +868,63 @@ local outcome ea
 		gen 	instrumentint = treat * `pgs2' if replicant==0
 		replace instrument = `pgs1' if replicant == 1
 		replace instrumentint = treat * `pgs1' if replicant==1
-		gen 	PGSxMoB = `pgs1'*MoB if replicant==0
-		replace PGSxMoB = `pgs2'*MoB if replicant==1
-		gen 	instrPGSxMoB = `pgs2'*MoB if replicant==0
-		replace instrPGSxMoB = `pgs1'*MoB if replicant==1
-		gen 	PGSxMoBxtreat = PGSxMoB*treat
+		
+		foreach control of varlist $Xvars{
+			qui sum `control'
+			gen     PGScombox`control' = `pgs1'*(`control'-r(mean)) if replicant==0
+			replace PGScombox`control' = `pgs2'*(`control'-r(mean)) if replicant==1
+			gen 	instrPGSx`control' = `pgs2'*(`control'-r(mean)) if replicant==0
+			replace instrPGSx`control' = `pgs1'*(`control'-r(mean)) if replicant==1
+		} // end foreach control
+
+		gen 	PGScomboxMoBxtreat = PGScomboxMoB*treat
 		gen 	instrPGSxMoBxtreat = instrPGSxMoB*treat
-		gen 	PGSxmale = `pgs1'*male if replicant==0
-		replace PGSxmale = `pgs2'*male if replicant==1
-		gen 	instrPGSxmale = `pgs2'*male if replicant==0
-		replace instrPGSxmale = `pgs1'*male if replicant==1
-		gen 	PGSxYoB92 = `pgs1'*YoB92 if replicant==0
-		replace PGSxYoB92 = `pgs2'*YoB92 if replicant==1
-		gen 	instrPGSxYoB92 = `pgs2'*YoB92 if replicant==0
-		replace instrPGSxYoB92 = `pgs1'*YoB92 if replicant==1
-		forval i=1(1)10 {
-			gen 	PGSxPC`i' = `pgs1'*c_PC`i' if replicant==0
-			replace PGSxPC`i' = `pgs2'*c_PC`i' if replicant==1
-			gen 	instrPGSxPC`i' = `pgs2'*c_PC`i' if replicant==0
-			replace instrPGSxPC`i' = `pgs1'*c_PC`i' if replicant==1
-		}
 		
 		* First stage
-		reghdfe mainVar instrument $xvars, absorb(replicant) cluster(cidB2492)
+		reghdfe mainVar instrument treat ${Xvars} ${Xtreat}, absorb(replicant) cluster(cidB2492)
 		testparm instrument
 		
 		* Without interactions a la Keller
-		eststo oriv_`outcome'a: ivreghdfe `outcome' (mainVar mainVarint = instrument instrumentint) treat $xvars, absorb(replicant, save) cluster(MoB cidB2492)
+		eststo oriv_`outcome'a: ivreghdfe `outcome' (mainVar mainVarint = instrument instrumentint) treat ${Xvars} ${Xtreat}, absorb(replicant, save) cluster(MoB cidB2492)
 		sum __hdfe1__			// the intercept
 		forvalues x=0/1 {
 			qui gen constant`x' = replicant == `x'
 		}
-		ivreghdfe `outcome' (mainVar mainVarint = instrument instrumentint) treat $xvars constant*, cluster(MoB cidB2492) 		// check intercept
+		ivreghdfe `outcome' (mainVar mainVarint = instrument instrumentint) treat ${Xvars} ${Xtreat} constant*, cluster(MoB cidB2492) 		// check intercept
 
-		* Withinteractions a la Keller
-		eststo oriv_`outcome'b: ivreghdfe `outcome' (mainVar mainVarint PGSxMoB PGSxMoBxtreat PGSxmale PGSxYoB92 PGSxPC* = instrument instrumentint instrPGSxMoB instrPGSxMoBxtreat instrPGSxmale instrPGSxYoB92 instrPGSxPC*) treat $xvars, absorb(replicant, save) cluster(MoB cidB2492)
+		* With interactions a la Keller
+		eststo oriv_`outcome'b: ivreghdfe `outcome' (mainVar mainVarint PGScomboxMoBnew PGScomboxMoBxtreat PGScomboxmale PGScomboxYoB92 PGScomboxc_PC* = instrument instrumentint instrPGSxMoBnew instrPGSxMoBxtreat instrPGSxmale instrPGSxYoB92 instrPGSxc_PC*) treat ${Xvars}, absorb(replicant, save) cluster(MoB cidB2492)
 		sum __hdfe1__			// the intercept
-		ivreghdfe `outcome' (mainVar mainVarint PGSxMoB PGSxMoBxtreat PGSxmale PGSxYoB92 PGSxPC* = instrument instrumentint instrPGSxMoB instrPGSxMoBxtreat instrPGSxmale instrPGSxYoB92 instrPGSxPC*) treat $xvars constant*, cluster(MoB cidB2492) 		// check intercept
+		ivreghdfe `outcome' (mainVar mainVarint PGScomboxMoBnew PGScomboxMoBxtreat PGScomboxmale PGScomboxYoB92 PGScomboxc_PC* = instrument instrumentint instrPGSxMoBnew instrPGSxMoBxtreat instrPGSxmale instrPGSxYoB92 instrPGSxc_PC*) treat ${Xvars} constant*, cluster(MoB cidB2492) 		// check intercept
 	restore
 
-	*esttab 	ivukb_`outcome' iv23me_`outcome' oriv_`outcome' using "${dirtables}/IV_`outcome'.tex", replace ///
+	/*esttab 	ivukb_`outcome' iv23me_`outcome' oriv_`outcome' using "${dirtables}/IV_`outcome'.tex", replace ///
 		frag bookt b(3) se(3) keep(treat treat_ukb pgs_ukb treat_23me pgs_23me treat_MoB MoB) ///
-		order(treat treat_PGS treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) star(* 0.10 ** 0.05 *** 0.01) ///
+		order(treat PGSxtreat treat_MoB MoB_PGS MoB_PGS_treat MoB PGS) star(* 0.10 ** 0.05 *** 0.01) ///
 		nomtitles stats(r2 N, label("R2" "Observations") fmt(3 0)) nonotes nonumber ///
 		mgroups("Key Stage 1" "Key Stage 2" "Key Stage 3" "Key Stage 4", pattern(1 0 1 0 1 0 1 0) span ///
 		prefix(\multicolumn{@span}{c}{) suffix(}) erepeat(\cmidrule(lr){@span})) ///
-		coeflabel(MoB "MoB" MoB_PGS "MoB*PGS" MoB_PGS_treat "MoB*PGS*Treated" PGS "PGS" treat "Treated" treat_MoB "Treated*MoB" treat_PGS "Treated*PGS") 
+		coeflabel(MoB "MoB" MoB_PGS "MoB*PGS" MoB_PGS_treat "MoB*PGS*Treated" PGS "PGS" treat "Treated" treat_MoB "Treated*MoB" PGSxtreat "Treated*PGS") 
+		
+	*/
 }  // end foreach outcome
 
-esttab 	pgs_ukb_eaa  pgs_ukb_eab  pgs_23me_eaa  pgs_23me_eab  oriv_eaa  oriv_eab , b se $keep $order star(* 0.10 ** 0.05 *** 0.01) stats(r2 N, fmt(3 0))
-esttab 	pgs_ukb_ks1a pgs_ukb_ks1b pgs_23me_ks1a pgs_23me_ks1b oriv_ks1a oriv_ks1b, b se $keep $order star(* 0.10 ** 0.05 *** 0.01) stats(r2 N, fmt(3 0))
-esttab 	pgs_ukb_ks2a pgs_ukb_ks2b pgs_23me_ks2a pgs_23me_ks2b oriv_ks2a oriv_ks2b, b se $keep $order star(* 0.10 ** 0.05 *** 0.01) stats(r2 N, fmt(3 0))
-esttab 	pgs_ukb_ks3a pgs_ukb_ks3b pgs_23me_ks3a pgs_23me_ks3b oriv_ks3a oriv_ks3b, b se $keep $order star(* 0.10 ** 0.05 *** 0.01) stats(r2 N, fmt(3 0))
-esttab 	pgs_ukb_ks4a pgs_ukb_ks4b pgs_23me_ks4a pgs_23me_ks4b oriv_ks4a oriv_ks4b, b se $keep $order star(* 0.10 ** 0.05 *** 0.01) stats(r2 N, fmt(3 0))
+esttab 	pgs_ukb_eaa  pgs_ukb_eab  pgs_23me_eaa  pgs_23me_eab  oriv_eaa  oriv_eab , b se keep(${tokeep}) order(${tokeep}) star(* 0.10 ** 0.05 *** 0.01) stats(r2 N, fmt(3 0))
+esttab 	pgs_ukb_ks1a pgs_ukb_ks1b pgs_23me_ks1a pgs_23me_ks1b oriv_ks1a oriv_ks1b, b se keep(${tokeep}) order(${tokeep}) star(* 0.10 ** 0.05 *** 0.01) stats(r2 N, fmt(3 0))
+esttab 	pgs_ukb_ks2a pgs_ukb_ks2b pgs_23me_ks2a pgs_23me_ks2b oriv_ks2a oriv_ks2b, b se keep(${tokeep}) order(${tokeep}) star(* 0.10 ** 0.05 *** 0.01) stats(r2 N, fmt(3 0))
+esttab 	pgs_ukb_ks3a pgs_ukb_ks3b pgs_23me_ks3a pgs_23me_ks3b oriv_ks3a oriv_ks3b, b se keep(${tokeep}) order(${tokeep}) star(* 0.10 ** 0.05 *** 0.01) stats(r2 N, fmt(3 0))
+esttab 	pgs_ukb_ks4a pgs_ukb_ks4b pgs_23me_ks4a pgs_23me_ks4b oriv_ks4a oriv_ks4b, b se keep(${tokeep}) order(${tokeep}) star(* 0.10 ** 0.05 *** 0.01) stats(r2 N, fmt(3 0))
 
 
+* output
+esttab oriv_eab oriv_ks1b oriv_ks2b oriv_ks3b oriv_ks4b using "${dirtables}/ORIV_all.tex" , replace ///
+		frag bookt b(3) se(3) ///
+		keep(treat mainVar mainVarint treatxMoBnew PGScomboxMoBnew PGScomboxMoBxtreat MoBnew) ///
+		order(treat mainVar mainVarint treatxMoBnew PGScomboxMoBnew PGScomboxMoBxtreat MoBnew) ///
+		star(* 0.10 ** 0.05 *** 0.01) ///
+		nomtitles stats(r2 N, label("R2" "Observations") fmt(3 0)) nonotes nonumber ///
+		mgroups("Entry Ass." "Key Stage 1" "Key Stage 2" "Key Stage 3" "Key Stage 4", pattern(1 1 1 1 1)) ///
+		coeflabel(MoBnew "MoB" PGScomboxMoBnew "MoB*PGS" PGScomboxMoBxtreat "MoB*PGS*Treated" mainVar "PGS" treat "Treated" treatxMoBnew "Treated*MoB" mainVarint "Treated*PGS") 
 
 } // end if iv
 
@@ -998,6 +1016,8 @@ reg ea  i.treat PGS treat#c.PGS   PGSxtreatxMoBnew ${Xvars} ${Xtreat} ${Xpgs}, c
 
 	graph export "${dirfigures}/permutation_tstat_`pgs'.png", replace
 //restore
+
+capture rm permutation.dta
 
 } // end if permutation
 } // end if analysis

@@ -11,8 +11,11 @@ set scheme plotplainblind
 
 
 /* SET YOUR DIRECTORY
-global dirdropbox  "/Users/`c(username)'/Dropbox/GEIGHEI/projects/GxE_4practitioners"
-global dirdropbox  "/mnt/data/Dropbox/GEIGHEI/projects/GxE_4practitioners"              //for pietro's work computer
+global dirdropbox  "/Users/`c(username)'/Dropbox/GEIGHEI/"
+global dirdropbox  "/mnt/data/Dropbox/GEIGHEI/"              //for pietro's work computer
+
+global dirtables  "${dirdropbox}/projects/GxE_4practitioners/tables"
+global dirfigures "${dirdropbox}/projects/GxE_4practitioners/figures"
 */
 
 cd ${dirdropbox}
@@ -199,7 +202,4 @@ twoway (line overall_power1power1 overall_power1beta) ///
 }
 
 
-graph export ${dirdropbox}/figures/power.pdf, replace
-	
-
-
+graph export "${dirfigures}/power.png", replace
