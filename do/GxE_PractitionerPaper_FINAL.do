@@ -17,6 +17,7 @@ if "`c(username)'" == "pbirol" {
 
 else if "`c(username)'" == "ecsmvhkv" {
 	global dirdata  "\\rdsfcifs.acrc.bris.ac.uk/ALSPAC_GxE/Alspac"
+	global dropb    "C:/Users/ecsmvhkv/Dropbox"
 }
 
 global dirdropbox  "/Users/`c(username)'/Dropbox/GEIGHEI"
@@ -77,6 +78,12 @@ foreach i in children mothers {
 
 *** On ALSPAC data held at Erasmus
 use 	"${dirdata}/Data_Set/Rietveld_12Sep18.dta", clear
+
+* Merge with data on age in weeks
+merge 	1:1 cidB2492 qlet using "${dropb}/ALSPAC phenotypes/Rietveld_22Apr2021.dta", keepusing(ka495 ka496 ka497 ku705b ku706b ku707b ku708b ku709b ku710b ku991a kw6600b kw6601b kw6602b kw6603b kw6604b kw6605b kw9991a)
+drop 	if _m<3
+drop 	_m
+
 
 * Merge in children's PGSs (UKB and 23me)
 egen 	id_child = concat(cidB2492 qlet)
@@ -588,6 +595,7 @@ keep if window3mth == 1 // keep only 3 months of each side of the cutoff
 *------- Predictive power of the PGS ----------------------------------------------------*
 ** NOTE: trimming the tails to avoid weird non-linear fit
 
+/* - these are similar to the ones we create later (by treatment grou) - drop here?
 foreach outcome in ea ks1 ks2 ks3 ks4 {
 	* Bin-scatter plot of PGS over outcome + density of PGS
 	local outcomelabel: variable label `outcome'
@@ -608,7 +616,7 @@ foreach outcome in ea ks1 ks2 ks3 ks4 {
 	graph export "${dirfigures}/density_PGS_`outcome'.png", replace
 	drop 	PGS_bin meanP meanD tag
 } // end of foreach outcome
-
+*/
 
 
 
@@ -619,6 +627,7 @@ foreach outcome in ea ks1 ks2 ks3 ks4 {
 * repeated here from the cleandata section
 /* The meta-analysed score 23me_ukb is the one that always has the highest predictive power */
 foreach outcome in ea ks1 ks2 ks3 ks4 {
+	qui eststo `outcome'_r2base: reg `outcome' male c_PC*, robust
 	foreach method in plink ukb 23me 23me_ukb {
 		label var pgs_children_`method' "PGS `method'"
 		qui eststo `outcome'_`method': reg `outcome' pgs_children_`method' male c_PC*, robust
@@ -626,11 +635,20 @@ foreach outcome in ea ks1 ks2 ks3 ks4 {
 
 esttab `outcome'_plink `outcome'_ukb `outcome'_23me `outcome'_23me_ukb, b se keep(pgs_children_*) stats(r2 N)
 
-esttab 	`outcome'_plink `outcome'_ukb `outcome'_23me `outcome'_23me_ukb using "${dirtables}/PredictivePower_`outcome'.tex", replace ///
+*esttab 	`outcome'_plink `outcome'_ukb `outcome'_23me `outcome'_23me_ukb using "${dirtables}/PredictivePower_`outcome'.tex", replace ///
 	frag bookt b(3) se(3) keep(pgs*) star(* 0.10 ** 0.05 *** 0.01) ///
 	nomtitles stats(r2 N, label("R2" "Observations") fmt(3 0)) nonotes ///
 	label
 } // end foreach outcome
+
+esttab 	ea_23me_ukb ks1_23me_ukb ks2_23me_ukb ks3_23me_ukb ks4_23me_ukb, b se keep(pgs*) stats(r2 N)
+esttab 	ea_23me_ukb ks1_23me_ukb ks2_23me_ukb ks3_23me_ukb ks4_23me_ukb using "${dirtables}/PredictivePower_23me_ukb.tex", replace ///
+	frag bookt b(3) se(3) keep(pgs*) star(* 0.10 ** 0.05 *** 0.01) ///
+	nomtitles stats(r2 N, label("R2" "Observations") fmt(3 0)) nonotes nonumber ///
+	mgroups("Entry Assessment" "Key Stage 1" "Key Stage 2" "Key Stage 3" "Key Stage 4", pattern(1 1 1 1 1 ) span ///
+	prefix(\multicolumn{@span}{c}{) suffix(}) erepeat(\cmidrule(lr){@span})) ///
+	coeflabel(pgs_children_23me_ukb "PGS") 
+
 
 est drop _all
 } // end if predictive
@@ -694,7 +712,7 @@ keep if window3mth == 1
 pwcorr PGS pgs_children*
 tab MoB treat
 global Xvars       MoBnew male YoB92 c_PC* // input: variables to control for in the regression
-global tokeep      treat PGS PGSxtreat treatxMoBnew PGSxMoBnew PGSxtreatxMoBnew  // variables to keep in the output
+global tokeep      treat PGS PGSxtreat MoBnew treatxMoBnew PGSxMoBnew PGSxtreatxMoBnew  // variables to keep in the output
 
 
 
@@ -738,7 +756,7 @@ foreach outcome in ea ks1 ks2 ks3 ks4 {
 		frag bookt b(3) se(3) keep(${tokeep}) ///
 		order(${tokeep}) star(* 0.10 ** 0.05 *** 0.01) ///
 		nomtitles stats(r2 N, label("R2" "Observations") fmt(3 0)) nonotes ///
-		coeflabel(MoB "MoB" PGSxMoBnew "MoB*PGS" PGSxtreatxMoBnew "MoB*PGS*Treated" PGS "PGS" treat "Treated" treatxMoBnew "Treated*MoB" PGSxtreat "Treated*PGS") 
+		coeflabel(MoBnew "MoB" PGSxMoBnew "MoB*PGS" PGSxtreatxMoBnew "MoB*PGS*Treated" PGS "PGS" treat "Treated" treatxMoBnew "Treated*MoB" PGSxtreat "Treated*PGS") 
 
 } // end foreach outcome
 
@@ -755,7 +773,7 @@ esttab 	ks1_treat ks1_gxe ks2_treat ks2_gxe ks3_treat ks3_gxe ks4_treat ks4_gxe 
 		nomtitles stats(r2 N, label("R2" "Observations") fmt(3 0)) nonotes nonumber ///
 		mgroups("Key Stage 1" "Key Stage 2" "Key Stage 3" "Key Stage 4", pattern(1 0 1 0 1 0 1 0) span ///
 		prefix(\multicolumn{@span}{c}{) suffix(}) erepeat(\cmidrule(lr){@span})) ///
-		coeflabel(MoB "MoB" PGSxMoBnew "MoB*PGS" PGSxtreatxMoBnew "MoB*PGS*Treated" PGS "PGS" treat "Treated" treatxMoBnew "Treated*MoB" PGSxtreat "Treated*PGS") 
+		coeflabel(MoBnew "MoB" PGSxMoBnew "MoB*PGS" PGSxtreatxMoBnew "MoB*PGS*Treated" PGS "PGS" treat "Treated" treatxMoBnew "Treated*MoB" PGSxtreat "Treated*PGS") 
 
 
 ** All of the outcomes in one table
@@ -883,9 +901,11 @@ foreach outcome in ea ks1 ks2 ks3 ks4 {
 		* First stage
 		reghdfe mainVar instrument treat ${Xvars} ${Xtreat}, absorb(replicant) cluster(cidB2492)
 		testparm instrument
+		scalar 	Fstat = r(F)
 		
 		* Without interactions a la Keller
 		eststo oriv_`outcome'a: ivreghdfe `outcome' (mainVar mainVarint = instrument instrumentint) treat ${Xvars} ${Xtreat}, absorb(replicant, save) cluster(MoB cidB2492)
+		estadd  scalar Fstat = scalar(Fstat)
 		sum __hdfe1__			// the intercept
 		forvalues x=0/1 {
 			qui gen constant`x' = replicant == `x'
@@ -894,6 +914,7 @@ foreach outcome in ea ks1 ks2 ks3 ks4 {
 
 		* With interactions a la Keller
 		eststo oriv_`outcome'b: ivreghdfe `outcome' (mainVar mainVarint PGScomboxMoBnew PGScomboxMoBxtreat PGScomboxmale PGScomboxYoB92 PGScomboxc_PC* = instrument instrumentint instrPGSxMoBnew instrPGSxMoBxtreat instrPGSxmale instrPGSxYoB92 instrPGSxc_PC*) treat ${Xvars}, absorb(replicant, save) cluster(MoB cidB2492)
+		estadd  scalar Fstat = scalar(Fstat)
 		sum __hdfe1__			// the intercept
 		ivreghdfe `outcome' (mainVar mainVarint PGScomboxMoBnew PGScomboxMoBxtreat PGScomboxmale PGScomboxYoB92 PGScomboxc_PC* = instrument instrumentint instrPGSxMoBnew instrPGSxMoBxtreat instrPGSxmale instrPGSxYoB92 instrPGSxc_PC*) treat ${Xvars} constant*, cluster(MoB cidB2492) 		// check intercept
 	restore
@@ -909,11 +930,11 @@ foreach outcome in ea ks1 ks2 ks3 ks4 {
 	*/
 }  // end foreach outcome
 
-esttab 	pgs_ukb_eaa  pgs_ukb_eab  pgs_23me_eaa  pgs_23me_eab  oriv_eaa  oriv_eab , b se keep(${tokeep}) order(${tokeep}) star(* 0.10 ** 0.05 *** 0.01) stats(r2 N, fmt(3 0))
-esttab 	pgs_ukb_ks1a pgs_ukb_ks1b pgs_23me_ks1a pgs_23me_ks1b oriv_ks1a oriv_ks1b, b se keep(${tokeep}) order(${tokeep}) star(* 0.10 ** 0.05 *** 0.01) stats(r2 N, fmt(3 0))
-esttab 	pgs_ukb_ks2a pgs_ukb_ks2b pgs_23me_ks2a pgs_23me_ks2b oriv_ks2a oriv_ks2b, b se keep(${tokeep}) order(${tokeep}) star(* 0.10 ** 0.05 *** 0.01) stats(r2 N, fmt(3 0))
-esttab 	pgs_ukb_ks3a pgs_ukb_ks3b pgs_23me_ks3a pgs_23me_ks3b oriv_ks3a oriv_ks3b, b se keep(${tokeep}) order(${tokeep}) star(* 0.10 ** 0.05 *** 0.01) stats(r2 N, fmt(3 0))
-esttab 	pgs_ukb_ks4a pgs_ukb_ks4b pgs_23me_ks4a pgs_23me_ks4b oriv_ks4a oriv_ks4b, b se keep(${tokeep}) order(${tokeep}) star(* 0.10 ** 0.05 *** 0.01) stats(r2 N, fmt(3 0))
+esttab 	pgs_ukb_eaa  pgs_ukb_eab  pgs_23me_eaa  pgs_23me_eab  oriv_eaa  oriv_eab , b se keep(${tokeep}) order(${tokeep}) star(* 0.10 ** 0.05 *** 0.01) stats(Fstat N, fmt(3 0))
+esttab 	pgs_ukb_ks1a pgs_ukb_ks1b pgs_23me_ks1a pgs_23me_ks1b oriv_ks1a oriv_ks1b, b se keep(${tokeep}) order(${tokeep}) star(* 0.10 ** 0.05 *** 0.01) stats(Fstat N, fmt(3 0))
+esttab 	pgs_ukb_ks2a pgs_ukb_ks2b pgs_23me_ks2a pgs_23me_ks2b oriv_ks2a oriv_ks2b, b se keep(${tokeep}) order(${tokeep}) star(* 0.10 ** 0.05 *** 0.01) stats(Fstat N, fmt(3 0))
+esttab 	pgs_ukb_ks3a pgs_ukb_ks3b pgs_23me_ks3a pgs_23me_ks3b oriv_ks3a oriv_ks3b, b se keep(${tokeep}) order(${tokeep}) star(* 0.10 ** 0.05 *** 0.01) stats(Fstat N, fmt(3 0))
+esttab 	pgs_ukb_ks4a pgs_ukb_ks4b pgs_23me_ks4a pgs_23me_ks4b oriv_ks4a oriv_ks4b, b se keep(${tokeep}) order(${tokeep}) star(* 0.10 ** 0.05 *** 0.01) stats(Fstat N, fmt(3 0))
 
 
 * output
@@ -922,7 +943,7 @@ esttab oriv_eab oriv_ks1b oriv_ks2b oriv_ks3b oriv_ks4b using "${dirtables}/ORIV
 		keep(treat mainVar mainVarint treatxMoBnew PGScomboxMoBnew PGScomboxMoBxtreat MoBnew) ///
 		order(treat mainVar mainVarint treatxMoBnew PGScomboxMoBnew PGScomboxMoBxtreat MoBnew) ///
 		star(* 0.10 ** 0.05 *** 0.01) ///
-		nomtitles stats(r2 N, label("R2" "Observations") fmt(3 0)) nonotes nonumber ///
+		nomtitles stats(Fstat N, label("$1^{st}$ stage F-stat" "Observations") fmt(0 0)) nonotes nonumber ///
 		mgroups("Entry Ass." "Key Stage 1" "Key Stage 2" "Key Stage 3" "Key Stage 4", pattern(1 1 1 1 1)) ///
 		coeflabel(MoBnew "MoB" PGScomboxMoBnew "MoB*PGS" PGScomboxMoBxtreat "MoB*PGS*Treated" mainVar "PGS" treat "Treated" treatxMoBnew "Treated*MoB" mainVarint "Treated*PGS") 
 
@@ -998,7 +1019,7 @@ reg ea  i.treat PGS treat#c.PGS   PGSxtreatxMoBnew ${Xvars} ${Xtreat} ${Xpgs}, c
 	display "`qin5'"
 	display "the median is " r(r500)
 
-	hist coef, scheme(plotplainblind) xtitle("Coefficient interaction term") legend(off) fc(none) lc(blue) xline(`qin5' `qin95' `qin25' `qin975', lp(dash)) xline(`beta_x', lc(black) )
+	hist coef, scheme(plotplainblind) xtitle("Coefficient interaction term") legend(off) fc(none) lc(blue) xline(`qin5' `qin95' `qin25' `qin975', lp(dash)) xline(`beta_x', lc(black) lp(solid) )
 
 	graph export "${dirfigures}/permutation_coef_`pgs'.png", replace
 
@@ -1012,7 +1033,7 @@ reg ea  i.treat PGS treat#c.PGS   PGSxtreatxMoBnew ${Xvars} ${Xtreat} ${Xpgs}, c
 	local qin975 = r(r975)
 	display "`qin5'"
 
-	hist tstat, scheme(plotplainblind) xtitle("T-statistic interaction term") legend(off) fc(none) lc(blue) xline(`qin5' `qin95' `qin25' `qin975', lp(dash)) xline(`tstat_x', lc(black) )
+	hist tstat, scheme(plotplainblind) xtitle("T-statistic interaction term") legend(off) fc(none) lc(blue) xline(`qin5' `qin95' `qin25' `qin975', lp(dash)) xline(`tstat_x', lc(black) lp(solid) )
 
 	graph export "${dirfigures}/permutation_tstat_`pgs'.png", replace
 //restore

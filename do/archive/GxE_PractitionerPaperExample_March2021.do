@@ -172,7 +172,7 @@ replace pgs_children_23me = pgs_children_23me * -1
 replace pgs_mothers_23me  = pgs_mothers_23me  * -1
 
 
-* Month of birth
+* Month of birth 		(cannot identify week of birth within the year - requested the data, but the one vbl we need to identify the week (i.e., the day of birth) was not given when data was delivered)
 gen 	MoB = ka498
 recode 	MoB (-9999=.)
 label 	def MoB 1 "Jan" 2 "Feb" 3 "Mar" 4 "Apr" 5 "May" 6 "Jun" 7 "Jul" 8 "Aug" 9 "Sep" 10 "Oct" 11 "Nov" 12 "Dec"
