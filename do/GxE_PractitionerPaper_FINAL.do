@@ -410,21 +410,21 @@ foreach var of varlist ea* ks1* ks2* ks3* ks4* {
 
 
 * Combined
-twoway  (line ea  MoB, sort) ///
-	(line ks1 MoB, sort) ///
-	(line ks2 MoB, sort) ///
-	(line ks3 MoB, sort) ///
-	(line ks4 MoB, sort) ///
+twoway  (line ea  MoB, sort lp(shortdash) lc(gs0)) ///
+	(line ks1 MoB, sort lp(dash_dot) lc(gs0)) ///
+	(line ks2 MoB, sort lp(dash) lc(gs5)) ///
+	(line ks3 MoB, sort lp(longdash_dot) lc(gs5)) ///
+	(line ks4 MoB, sort lp(solid) lc(gs4)) ///
 	(rcap hiea lowea MoB, color(gs13)) ///
 	(rcap hiks1 lowks1 MoB, color(gs13)) ///
 	(rcap hiks2 lowks2 MoB, color(gs13)) ///
 	(rcap hiks3 lowks3 MoB, color(gs13)) ///
 	(rcap hiks4 lowks4 MoB, color(gs13)) ///
 	, xlabel(1(1)12, valuelabel) ///
-	ytitle("Standardised score") xtitle("Month of birth") ///
-	legend(on order(1 "Age 4" 2 "Age 7" 3 "Age 11" 4 "Age 14" 5 "Age 16") pos(6) row(1)) ///
+	ytitle("Standardized score") xtitle("Month of birth") ///
+	legend(on order(1 "Age 4" 2 "Age 7" 3 "Age 11" 4 "Age 14" 5 "Age 16") pos(6) row(1) symxsize(0.2cm)) ///
 	ylabel(-.5(.25).5) yscale(range(-0.5 0.5)) yline(0) ///
-	title("Test scores by month of birth") //scheme(s1mono)
+	title("Test scores by month of birth") scheme(s1mono)
 graph export "${dirfigures}/MoB.png", replace
 
 
@@ -467,6 +467,35 @@ graph export "${dirfigures}/MoB_`test'_byPGS.png", replace
 restore //after collpasing
 
 
+* Fig only for EA age 4 and distinguish between high/low PGS
+use "${dirdata}/Data_Set/cleanALSPAC4application.dta", clear
+
+foreach var of varlist ea ks1 ks2 ks3 ks4 {
+	gen `var'hiPGS = `var' if highPGS==1
+	gen `var'loPGS = `var' if highPGS==0
+}
+
+* Collapse the data
+ collapse (mean)  eahiPGS* ealoPGS* ks1* ks2* ks3* ks4* ///
+	 (sd)    sdea=ea sdks1=ks1 sdks2=ks2 sdks3=ks3 sdks4=ks4 ///
+	 (sd)    sdeahiPGS=eahiPGS sdks1hiPGS=ks1hiPGS sdks2hiPGS=ks2hiPGS sdks3hiPGS=ks3hiPGS sdks4hiPGS=ks4hiPGS ///
+	 (sd)    sdealoPGS=ealoPGS sdks1loPGS=ks1loPGS sdks2loPGS=ks2loPGS sdks3loPGS=ks3loPGS sdks4loPGS=ks4loPGS ///
+	 (count) nea=ea nks1=ks1 nks2=ks2 nks3=ks3 nks4=ks4 ///
+	 (count) neahiPGS=eahiPGS nks1hiPGS=ks1hiPGS nks2hiPGS=ks2hiPGS nks3hiPGS=ks3hiPGS nks4hiPGS=ks4hiPGS ///
+	 (count) nealoPGS=ealoPGS nks1loPGS=ks1loPGS nks2loPGS=ks2loPGS nks3loPGS=ks3loPGS nks4loPGS=ks4loPGS ///
+		 , by(MoB MoBnew)
+
+drop if MoB==.
+
+
+twoway  (line eahiPGS  MoB, sort lp(solid) lc(gs0)) ///
+	(line ealoPGS  MoB, sort lp(dash) lc(gs0)) ///
+	, xlabel(1(1)12, valuelabel) ///
+	ytitle("Standardized score") xtitle("Month of birth") ///
+	legend(on order(1 "High PGI" 2 "Low PGI") pos(6) row(1)) ///
+	ylabel(-.5(.25).5) yscale(range(-0.5 0.5)) yline(0) ///
+	title("Age 4 test scores by month of birth") scheme(s1mono)
+graph export "${dirfigures}/MoBtmp.png", replace
 
 
 
@@ -539,6 +568,9 @@ if ${rGE}==1{ // Checks if the PGS is correlated with the treatment (it should N
 use "${dirdata}/Data_Set/cleanALSPAC4application.dta", clear
 keep if window3mth == 1 // keep only 3 months of each side of the cutoff
 
+label var PGS "Child PGI for Educational Attainment"
+label var PGS_mother "Mother PGI for Educational Attainment"
+
 local PGSlabel: variable label PGS
 local PGSlabelmother: variable label PGS_mothers
 
@@ -551,10 +583,10 @@ local lab1 : label treat 1
 *------- Differences in the density of the PGS by treatment ----------------------------------------------------*
 * Children's PGS
 twoway ///
-    (kdensity PGS if treat ==0) ///, ci
-	(kdensity PGS if treat ==1) ///, ci
+    (kdensity PGS if treat ==0, lp(solid)) ///, ci
+	(kdensity PGS if treat ==1, lp(dash)) ///, ci
 	, legend(label(1 "`lab0'") label(2 "`lab1'") row(1) position(6)) ///
-	  xtitle("`PGSlabel'") ytitle("Density")
+	  xtitle("`PGSlabel'") ytitle("Density") scheme(s1mono)
 
 	graph export "${dirfigures}/kdens_treat_PGS.png", replace
 
@@ -562,10 +594,10 @@ twoway ///
 *------- Differences in the density of maternal PGS by treatment ----------------------------------------------------*
 * Mothers' PGS
 twoway ///
-    (kdensity PGS_mothers if treat ==0) ///, ci
-	(kdensity PGS_mothers if treat ==1) ///, ci
+    (kdensity PGS_mothers if treat ==0, lp(solid)) ///, ci
+	(kdensity PGS_mothers if treat ==1, lp(dash)) ///, ci
 	, legend(label(1 "`lab0'") label(2 "`lab1'") row(1) position(6)) ///
-	  xtitle("`PGSlabelmother'") ytitle("Density")
+	  xtitle("`PGSlabelmother'") ytitle("Density") scheme(s1mono)
 
 	graph export "${dirfigures}/kdens_treat_PGS_mothers.png", replace
 
@@ -662,8 +694,9 @@ keep if window3mth == 1 // keep only 3 months of each side of the cutoff
 ************* fig:PGSxTreat_ea
 *------- Plot to the data to visualize the realationship between G and the outcome for treat and control -----------------------------*
 ** NOTE: trimming the tails to avoid weird non-linear fit
-
+	
 foreach outcome in ea ks1 ks2 ks3 ks4 {
+
 	local outcomelabel: variable label `outcome'
 	local lab0 : label treat 0
 	local lab1 : label treat 1
@@ -686,15 +719,15 @@ foreach outcome in ea ks1 ks2 ks3 ks4 {
 	
 	* twoway graph
 	twoway  ///
-		(scatter meanD0 PGS if tag0==1) ///
-		(scatter meanD1 PGS if tag1==1) ///
+		(scatter meanD0 PGS if tag0==1, msize(small)) ///
+		(scatter meanD1 PGS if tag1==1, msize(small)) ///
 		(lpolyci `outcome' PGS if treat==0) ///
 		(lpolyci `outcome' PGS if treat==1) ///
 		if PGS>-3 & PGS<3 , /// XXXX CUTTING OFF THE TAILS!
-		legend(label(1 "`lab0', bin scatter")  label(2 "`lab1', bin scatter") ///
-			   label(4 "`lab0', local polynomial smooth") label(5 "`lab1', local polynomial smooth") /// 
-			   label(3 "95% CI") rows(2) position(6) size(vsmall)) ///
-		xtitle("PGS") ytitle("`outcomelabel'") scheme(plotplainblind)
+		legend(label(1 "Control, scatter")  label(2 "Treated, scatter") ///
+			   label(4 "Control, local polynomial") label(5 "Treated, local polynomial") /// 
+			   rows(2) position(6) order(1 2 4 5)) ///
+		xtitle("PGI") ytitle("`outcomelabel'") scheme(s1mono) xsc(r(-3 3)) xlabel(-3(1)3)
 		
 	graph export "${dirfigures}/PGSxTreat_`outcome'.png", replace
 	drop 	PGS_bin* meanP* meanD* tag*
